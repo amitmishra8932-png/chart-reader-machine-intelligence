@@ -1,5 +1,15 @@
-import streamlit as st
 from datetime import datetime
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+from engine.data_loader import read_uploaded_csv
+from engine.indicators import add_indicators
+from engine.market_structure import add_market_structure
+from engine.outcomes import label_forward_returns, outcome_summary
+from engine.patterns import detect_patterns
+from providers.fivepaisa import connection_status
 
 st.set_page_config(
     page_title="Chart Reader | Machine Intelligence",
@@ -9,62 +19,147 @@ st.set_page_config(
 )
 
 st.title("📈 Chart Reader — Machine Intelligence")
-st.caption("An evidence-led market analysis laboratory powered by 5paisa data.")
+st.caption("An evidence-led market analysis laboratory · 5paisa integration in progress")
 
+provider = connection_status()
 with st.sidebar:
     st.header("Project controls")
-    st.info("Development build · Read-only market data")
-    st.markdown("**Data provider:** 5paisa")
-    st.markdown("**Platform:** Streamlit")
-    st.markdown("**Mode:** Research / paper analysis")
+    st.info("Research build · Read-only · No order placement")
+    st.markdown("**Broker:** 5paisa")
+    st.markdown("**Deployment:** Streamlit Community Cloud")
     st.divider()
-    st.caption("No orders are placed by this application.")
+    st.subheader("Data source")
+    uploaded = st.file_uploader("Upload historical OHLCV CSV", type=["csv"])
+    st.caption("Required columns: timestamp (or date), open, high, low, close. Volume is optional.")
+    symbol = st.text_input("Instrument label", value="Uploaded instrument")
+    st.caption("Uploaded data stays in this app session; it is not written to GitHub.")
 
 st.subheader("Workspace")
-overview, chart, research = st.tabs(
-    ["Overview", "Chart analysis", "Research & validation"]
+overview, chart_tab, intelligence, research = st.tabs(
+    ["Overview", "Chart analysis", "Intelligence", "Research & validation"]
 )
+
+data = None
+error = None
+if uploaded is not None:
+    try:
+        raw = read_uploaded_csv(uploaded)
+        data = add_market_structure(detect_patterns(add_indicators(raw)))
+        data = label_forward_returns(data, horizons=(3, 6, 12))
+    except ValueError as exc:
+        error = str(exc)
+    except Exception as exc:
+        error = f"Unexpected data-processing error: {exc}"
 
 with overview:
-    left, middle, right = st.columns(3)
-    left.metric("Data connection", "Not configured")
-    middle.metric("Analysis engine", "Foundation")
-    right.metric("Trading mode", "Read-only")
+    a, b, c = st.columns(3)
+    a.metric("5paisa connection", "Pending")
+    b.metric("Analysis engine", "Available")
+    c.metric("Trading mode", "Read-only")
+    st.warning(provider.message)
+    if error:
+        st.error(error)
+    elif data is not None:
+        st.success(f"Loaded and validated {len(data):,} candles from your CSV.")
+        x, y, z = st.columns(3)
+        x.metric("Latest close", f"{data['close'].iloc[-1]:,.2f}")
+        y.metric("Detected pattern candles", f"{(data['detected_patterns'] != '').sum():,}")
+        z.metric("Data rows", f"{len(data):,}")
+    else:
+        st.info("Upload a historical OHLCV CSV in the sidebar to use the independent analysis engine while 5paisa access is being clarified.")
 
-    st.warning(
-        "The application foundation is ready. Live market data will remain "
-        "disabled until the 5paisa integration is configured and tested."
-    )
-    st.markdown("### Development milestones")
+    st.markdown("### Development roadmap")
     st.markdown(
         """
-        - [x] Create independent Streamlit project
-        - [x] Establish secure configuration pattern
-        - [ ] Implement and verify 5paisa authentication
-        - [ ] Fetch historical candles
-        - [ ] Build chart and market-structure analysis
-        - [ ] Add replay, outcome tracking and validation
-        - [ ] Enable live read-only market monitoring
+        - [x] Public Streamlit application and secure secret-storage pattern
+        - [x] CSV OHLCV ingestion and validation
+        - [x] Initial indicators and explainable candle detectors
+        - [x] Trend / swing structure and forward-return research labels
+        - [ ] Automated unit-test execution and broader edge-case coverage
+        - [ ] 5paisa authentication and verified historical-data adapter
+        - [ ] Live read-only market monitoring
+        - [ ] Walk-forward ML experiments and paper validation
         """
     )
 
-with chart:
-    st.markdown("### Chart analysis")
-    st.caption(
-        "This workspace will display verified OHLCV candles, indicators, "
-        "detected structures and explanatory analysis."
-    )
-    st.info("Waiting for a verified market-data connection.")
+with chart_tab:
+    st.markdown("### Price chart")
+    if data is None:
+        st.info("Upload a CSV to render its candles and indicators.")
+    else:
+        view = data.tail(500).copy()
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(
+            x=view["timestamp"], open=view["open"], high=view["high"],
+            low=view["low"], close=view["close"], name="OHLC"
+        ))
+        for column, label in [("ema_20", "EMA 20"), ("ema_50", "EMA 50")]:
+            fig.add_trace(go.Scatter(
+                x=view["timestamp"], y=view[column], mode="lines",
+                name=label, connectgaps=False
+            ))
+        fig.update_layout(
+            height=650, xaxis_rangeslider_visible=False,
+            template="plotly_dark", legend_orientation="h",
+            margin=dict(l=10, r=10, t=35, b=10)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"Showing latest {len(view)} candles. Indicators use only current and past observations.")
+
+with intelligence:
+    st.markdown("### Explainable candle intelligence")
+    if data is None:
+        st.info("Upload a CSV to inspect detected candle patterns and market context.")
+    else:
+        latest = data.iloc[-1]
+        st.subheader(f"{symbol}: latest candle")
+        p, q, r = st.columns(3)
+        p.metric("Trend state", str(latest["trend_state"]))
+        q.metric("RSI (14)", "—" if pd.isna(latest["rsi_14"]) else f"{latest['rsi_14']:.1f}")
+        r.metric("ATR (14)", "—" if pd.isna(latest["atr_14"]) else f"{latest['atr_14']:.3f}")
+        patterns = data.loc[data["detected_patterns"] != "", ["timestamp", "close", "detected_patterns"]].tail(30)
+        st.markdown("#### Recent detected patterns")
+        if patterns.empty:
+            st.write("No registered patterns detected in this sample.")
+        else:
+            st.dataframe(patterns, use_container_width=True, hide_index=True)
+        st.caption("Patterns are descriptive candle shapes, not standalone buy/sell signals.")
 
 with research:
-    st.markdown("### Research & validation")
-    st.caption(
-        "Every detector and model will be evaluated against historical data. "
-        "No accuracy or profitability claims will be made without measured evidence."
-    )
-    st.info("Historical replay and experiment tracking are planned for a later phase.")
+    st.markdown("### Historical outcome research")
+    if data is None:
+        st.info("Upload a CSV to calculate forward returns for detected patterns.")
+    else:
+        horizon = st.selectbox("Forward horizon (candles)", [3, 6, 12], index=0)
+        pattern_map = {
+            "Doji": "pattern_doji",
+            "Hammer": "pattern_hammer",
+            "Shooting star": "pattern_shooting_star",
+            "Bullish engulfing": "pattern_bullish_engulfing",
+            "Bearish engulfing": "pattern_bearish_engulfing",
+            "Inside bar": "pattern_inside_bar",
+        }
+        rows = []
+        for label, column in pattern_map.items():
+            result = outcome_summary(data, column, horizon)
+            rows.append({
+                "Pattern": label,
+                "Observations": result["observations"],
+                "Mean forward return (%)": result["mean_return_pct"],
+                "Positive outcomes (%)": result["positive_rate_pct"],
+            })
+        summary = pd.DataFrame(rows)
+        st.dataframe(summary, use_container_width=True, hide_index=True)
+        st.caption(
+            "Forward returns are measured from the pattern candle close to the selected future close. "
+            "They exclude transaction costs, slippage and execution constraints; they are not strategy backtest results."
+        )
+        st.download_button(
+            "Download analysed candles (CSV)",
+            data=data.to_csv(index=False).encode("utf-8"),
+            file_name="chart_reader_analysis.csv",
+            mime="text/csv",
+        )
 
 st.divider()
-st.caption(
-    f"Chart Reader development build · Updated {datetime.now().strftime('%d %b %Y')}"
-)
+st.caption(f"Chart Reader development build · {datetime.now().strftime('%d %b %Y')}")
