@@ -356,7 +356,7 @@ with historical_tab:
         st.dataframe(audit_frame, use_container_width=True, hide_index=True)
         st.caption(
             "Missing-candle counts are estimates within the same date. "
-            "Recognised sessions include the configured 8-Nov-2026 Muhurat continuous session. Session timings are date-aware: before 7-Dec-2026, CAS-eligible securities use continuous trading until 15:15, CAS 15:15–15:35, transition 15:35–15:50, and post-close 15:50–16:00; from 7-Dec-2026, continuous trading runs until 15:30, CAS 15:30–15:40, transition 15:40–15:50, and post-close 15:50–16:00. Non-CAS securities continue until 15:30, then are classified in the transition period. CAS eligibility must be confirmed against the dated NSE security list. The audit assumes candle-start timestamps; verify 5paisa timestamp semantics before strategy use. Holiday calendars must be updated from official NSE circulars."
+            "Recognised sessions include the configured 8-Nov-2026 Muhurat continuous session. Session timings are date-aware: before 7-Dec-2026, CAS-eligible securities use continuous trading until 15:15, CAS 15:15–15:35, transition 15:35–15:50, and post-close 15:50–16:00; from 7-Dec-2026, continuous trading runs until 15:30, CAS 15:30–15:45, transition 15:45–15:50, and post-close 15:50–16:00. Non-CAS securities continue until 15:30, then are classified in the transition period. CAS eligibility must be confirmed against the dated NSE security list. The audit assumes candle-start timestamps; verify 5paisa timestamp semantics before strategy use. Holiday calendars must be updated from official NSE circulars."
         )
         st.download_button(
             "Download data quality audit (CSV)",

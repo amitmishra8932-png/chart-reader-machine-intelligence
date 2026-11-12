@@ -177,7 +177,7 @@ def audit_nse_session_integrity(
         if cas_eligible and cas2_effective:
             continuous_close = 15 * 60 + 30
             cas_start = 15 * 60 + 30
-            cas_end = 15 * 60 + 40
+            cas_end = 15 * 60 + 45
             transition_start = cas_end
         elif cas_eligible:
             continuous_close = 15 * 60 + 15
