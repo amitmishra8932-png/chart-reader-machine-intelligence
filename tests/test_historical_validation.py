@@ -88,7 +88,7 @@ class NSESessionIntegrityTests(unittest.TestCase):
         frame = candles(["2026-11-09 08:55", "2026-11-09 15:50", "2026-11-09 09:20"])
         report = audit_nse_session_integrity(frame, "15m")
         self.assertEqual(report["outside_session_timestamps"], 2)
-        self.assertEqual(report["misaligned_timestamps"], 1)
+        self.assertEqual(report["misaligned_timestamps"], 3)
         self.assertEqual(report["session_anomaly_rows"], 3)
 
     def test_supplied_holiday_dates_are_flagged(self):
