@@ -90,7 +90,7 @@ if uploaded is not None:
 
 with overview:
     a, b, c = st.columns(3)
-    a.metric("5paisa connection", "Pending")
+    a.metric("5paisa connection", "Connected" if provider.connected else "Pending")
     b.metric("Analysis engine", "Available")
     c.metric("Trading mode", "Read-only")
     st.warning(provider.message)
