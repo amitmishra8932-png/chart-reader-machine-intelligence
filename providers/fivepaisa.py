@@ -18,6 +18,7 @@ import requests
 OAUTH_BASE = "https://dev-openapi.5paisa.com/WebVendorLogin/VLogin/Index"
 ACCESS_TOKEN_URL = "https://openapi.5paisa.com/VendorsAPI/Service1.svc/GetAccessToken"
 MARKET_FEED_URL = "https://Openapi.5paisa.com/VendorsAPI/Service1.svc/V1/MarketFeed"
+MARKET_FEED_API_UID = "ka7SFqAU6SC"
 # Retained for legacy parser tests; the app no longer depends on this cache endpoint.
 SCRIP_MASTER_URL = "https://openapi.5paisa.com/VendorsAPI/Service1.svc/ScripMaster/segment/All"
 HISTORICAL_URL = "https://openapi.5paisa.com/V2/historical/N/C/{scrip_code}/{interval}"
@@ -190,14 +191,16 @@ def resolve_scrip_codes_via_market_feed(
     if not access_token or not api_key or not client_code:
         raise ValueError("5paisa session, API key and client code are required to resolve stock codes.")
     payload = {
-        "head": {"key": api_key},
+        "head": {"key": api_key, "requestCode": "5PMF"},
         "body": {
             "ClientCode": client_code,
+            "COUNT": client_code,
+            "ClientLoginType": 0,
             "MarketFeedData": [
                 {"Exch": "N", "ExchType": "C", "ScripCode": "0", "ScripData": f"{symbol}_EQ"}
                 for symbol in cleaned
             ],
-            "LastRequestTime": "/Date(0)/",
+            "LastRequestTime": f"/Date({int(pd.Timestamp.now().timestamp())})/",
             "RefreshRate": "H",
         },
     }
@@ -209,6 +212,7 @@ def resolve_scrip_codes_via_market_feed(
                 "Authorization": "Bearer " + access_token,
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                "5Paisa-API-Uid": MARKET_FEED_API_UID,
             },
             timeout=30,
         )
