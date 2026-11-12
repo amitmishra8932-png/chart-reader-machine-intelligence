@@ -10,7 +10,7 @@ from engine.data_loader import read_uploaded_csv
 from engine.indicators import add_indicators
 from engine.market_structure import add_market_structure
 from engine.outcomes import label_forward_returns, outcome_summary
-from engine.historical_validation import audit_historical_ohlcv
+from engine.historical_validation import audit_historical_ohlcv, audit_nse_session_integrity
 from engine.patterns import detect_patterns
 from data.nifty50 import NIFTY50_SYMBOLS
 from providers.fivepaisa import (
@@ -308,6 +308,10 @@ with historical_tab:
                     group[["timestamp", "open", "high", "low", "close", "volume"]],
                     audit_interval,
                 )
+                session_audit = audit_nse_session_integrity(
+                    group[["timestamp"]],
+                    audit_interval,
+                )
                 audit_rows.append({
                     "Stock": audit_symbol,
                     "Timeframe": audit_interval,
@@ -316,8 +320,15 @@ with historical_tab:
                     "Invalid OHLC rows": audit["invalid_ohlc_rows"],
                     "Negative volume rows": audit["negative_volume_rows"],
                     "Possible missing candles": audit["estimated_missing_intraday_bars"],
-                    "Quality status": audit["quality_status"],
-                    "Warnings": " | ".join(audit["warnings"]),
+                    "Weekend candles": session_audit["weekend_timestamps"],
+                    "Outside-session candles": session_audit["outside_session_timestamps"],
+                    "Misaligned timestamps": session_audit["misaligned_timestamps"],
+                    "Session anomaly rows": session_audit["session_anomaly_rows"],
+                    "Quality status": (
+                        "Session review required" if session_audit["session_anomaly_rows"]
+                        else audit["quality_status"]
+                    ),
+                    "Warnings": " | ".join(audit["warnings"] + session_audit["warnings"]),
                 })
             except ValueError as exc:
                 audit_rows.append({
