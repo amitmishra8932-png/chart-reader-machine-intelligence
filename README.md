@@ -11,6 +11,7 @@ An evidence-led stock-market chart research application built with Python and St
 - Basic EMA trend state and confirmed swing-point markers
 - Forward-return outcome labels at 3, 6 and 12 candles
 - Download of analysed candles
+- Manual paper-trade journal with LONG/SHORT entries, stop/target validation, stop-risk and cash-exposure sizing, simulated exits, estimated-friction-adjusted P&L, performance metrics, and CSV export/restore
 - Unit tests and GitHub Actions test workflow
 
 ## Run locally
@@ -31,6 +32,9 @@ The provider boundary is isolated in `providers/fivepaisa.py`. Authentication an
 ## Safety and research notes
 
 - Read-only research application; no order placement.
+- Paper trading is manual simulation only: prices are entered by the user; there are no live quotes or automated executions.
+- Paper-trade records are session-based; download and restore the CSV ledger to preserve them across app restarts.
+- Estimated friction is a configurable approximation, not an exact brokerage, tax or exchange-fee calculation.
 - Detected candle patterns are descriptions, not trading signals.
 - Forward-return summaries are not strategy backtests and do not include costs, slippage or execution constraints.
 - No performance or profitability claim is made without out-of-sample validation.
