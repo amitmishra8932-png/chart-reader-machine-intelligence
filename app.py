@@ -11,7 +11,7 @@ from engine.indicators import add_indicators
 from engine.market_structure import add_market_structure
 from engine.outcomes import label_forward_returns, outcome_summary
 from engine.paper_trading import (
-    close_paper_trade, open_paper_trade, paper_trading_summary,
+    close_paper_trade, load_trade_ledger, open_paper_trade, paper_trading_summary,
     suggest_quantity, trades_frame,
 )
 from engine.historical_validation import audit_historical_ohlcv, audit_nse_session_integrity
@@ -427,9 +427,9 @@ with paper_tab:
     paper_timeframe = c2.selectbox("Timeframe", ["5m", "15m"], key="paper_timeframe")
     paper_side = c3.selectbox("Direction", ["LONG", "SHORT"], key="paper_side")
     p1, p2, p3 = st.columns(3)
-    entry_price = p1.number_input("Observed entry price (₹)", min_value=0.01, value=100.0, step=0.05, key="paper_entry")
-    stop_price = p2.number_input("Stop-loss price (₹)", min_value=0.01, value=99.0, step=0.05, key="paper_stop")
-    target_price = p3.number_input("Target price (₹)", min_value=0.01, value=102.0, step=0.05, key="paper_target")
+    entry_price = p1.number_input("Observed entry price (₹)", min_value=0.01, value=0.01, step=0.05, key="paper_entry")
+    stop_price = p2.number_input("Stop-loss price (₹)", min_value=0.01, value=0.01, step=0.05, key="paper_stop")
+    target_price = p3.number_input("Target price (₹)", min_value=0.01, value=0.01, step=0.05, key="paper_target")
     try:
         suggested_qty = suggest_quantity(
             virtual_capital, risk_pct, entry_price, stop_price
@@ -457,7 +457,8 @@ with paper_tab:
         placeholder="Example: 15m uptrend, 5m pullback, volume confirmation",
         key="paper_setup_notes"
     )
-    if st.button("Open paper trade", type="primary", disabled=(suggested_qty < 1 or not sizing_ok or not setup_notes.strip()), use_container_width=True):
+    confirm_open = st.checkbox("I confirm these are observed prices and this is a simulated trade.", key="paper_confirm_open")
+    if st.button("Open paper trade", type="primary", disabled=(suggested_qty < 1 or not sizing_ok or not setup_notes.strip() or not confirm_open), use_container_width=True):
         try:
             new_trade = open_paper_trade(
                 st.session_state["paper_trades"],
@@ -489,8 +490,9 @@ with paper_tab:
         }
         selected_trade_label = st.selectbox("Open position", list(trade_labels), key="paper_close_trade")
         selected_trade_id = trade_labels[selected_trade_label]
-        exit_price = st.number_input("Observed exit price (₹)", min_value=0.01, value=100.0, step=0.05, key="paper_exit")
-        if st.button("Close selected paper trade", use_container_width=True):
+        exit_price = st.number_input("Observed exit price (₹)", min_value=0.01, value=0.01, step=0.05, key="paper_exit")
+        confirm_close = st.checkbox("I confirm this is the observed simulated exit price.", key="paper_confirm_close")
+        if st.button("Close selected paper trade", disabled=not confirm_close, use_container_width=True):
             try:
                 for index, trade in enumerate(st.session_state["paper_trades"]):
                     if trade["trade_id"] == selected_trade_id:
@@ -500,6 +502,21 @@ with paper_tab:
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
+
+    st.markdown("#### Restore a previous paper ledger")
+    ledger_upload = st.file_uploader(
+        "Upload a previously downloaded paper-trading ledger CSV",
+        type=["csv"],
+        key="paper_ledger_restore",
+    )
+    if ledger_upload is not None and st.button("Restore uploaded ledger", key="restore_paper_ledger"):
+        try:
+            restored = load_trade_ledger(ledger_upload)
+            st.session_state["paper_trades"] = restored
+            st.success(f"Restored {len(restored)} paper-trade records.")
+            st.rerun()
+        except ValueError as exc:
+            st.error(str(exc))
 
     st.markdown("#### Paper trade ledger")
     ledger = trades_frame(st.session_state["paper_trades"])
