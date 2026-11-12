@@ -257,6 +257,10 @@ def load_trade_ledger(uploaded_file) -> list[dict]:
         })
         records.append(row)
         seen_ids.add(trade_id)
-    if sum(t["status"] == "OPEN" for t in records) > 3:
+    open_records = [t for t in records if t["status"] == "OPEN"]
+    if len(open_records) > 3:
         raise ValueError("Ledger has more than 3 open positions; review it before restoring.")
+    open_symbols = [t["symbol"] for t in open_records]
+    if len(open_symbols) != len(set(open_symbols)):
+        raise ValueError("Ledger contains multiple open trades for the same stock.")
     return records
