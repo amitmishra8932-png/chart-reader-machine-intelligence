@@ -24,8 +24,8 @@ class FivePaisaAdapterTests(unittest.TestCase):
         master = parse_scrip_master(csv_text)
         self.assertEqual(resolve_scrip_code(master, "ITC"), 2885)
 
-    @patch("providers.fivepaisa.requests.post")
-    def test_historical_fetch_uses_post_and_client_code_header(self, mock_get):
+    @patch("providers.fivepaisa.requests.get")
+    def test_historical_fetch_uses_get_and_bearer_token(self, mock_get):
         response = Mock()
         response.ok = True
         response.json.return_value = {
@@ -40,7 +40,6 @@ class FivePaisaAdapterTests(unittest.TestCase):
         self.assertEqual(len(frame), 1)
         args, kwargs = mock_get.call_args
         self.assertIn("/V2/historical/N/C/2885/5m", args[0])
-        self.assertEqual(kwargs["headers"]["x-clientcode"], "TESTCLIENT")
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-access-token")
 
     def test_historical_candle_payload_normalizes_columns(self):
