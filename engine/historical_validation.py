@@ -133,10 +133,7 @@ def audit_nse_session_integrity(
     sessions = DEFAULT_SPECIAL_SESSIONS if special_sessions is None else special_sessions
     interval_size = interval_minutes[interval]
     open_minutes = 9 * 60 + 15
-    cas_start = 15 * 60 + 15
-    cas_end = 15 * 60 + 35
-    continuous_close = cas_start if cas_eligible else 15 * 60 + 30
-    transition_start = cas_end if cas_eligible else 15 * 60 + 30
+    cas2_effective_date = pd.Timestamp("2026-12-07").date()
     closing_session_start = 15 * 60 + 50
     exchange_close = 16 * 60
 
@@ -172,6 +169,22 @@ def audit_nse_session_integrity(
             classifications[index] = "closed_day"
             anomaly_indices.add(index)
             continue
+
+        cas2_effective = day >= cas2_effective_date
+        if cas_eligible and cas2_effective:
+            continuous_close = 15 * 60 + 30
+            cas_start = 15 * 60 + 30
+            cas_end = 15 * 60 + 40
+            transition_start = cas_end
+        elif cas_eligible:
+            continuous_close = 15 * 60 + 15
+            cas_start = 15 * 60 + 15
+            cas_end = 15 * 60 + 35
+            transition_start = cas_end
+        else:
+            continuous_close = 15 * 60 + 30
+            cas_start = cas_end = None
+            transition_start = 15 * 60 + 30
 
         if open_minutes <= minute < continuous_close:
             classifications[index] = "regular"
