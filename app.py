@@ -428,31 +428,34 @@ with paper_tab:
     paper_timeframe = c2.selectbox("Timeframe", ["5m", "15m"], key="paper_timeframe")
     paper_side = c3.selectbox("Direction", ["LONG", "SHORT"], key="paper_side")
     p1, p2, p3 = st.columns(3)
-    entry_price = p1.number_input("Observed entry price (₹)", min_value=0.01, value=0.01, step=0.05, key="paper_entry")
-    stop_price = p2.number_input("Stop-loss price (₹)", min_value=0.01, value=0.01, step=0.05, key="paper_stop")
-    target_price = p3.number_input("Target price (₹)", min_value=0.01, value=0.01, step=0.05, key="paper_target")
-    try:
-        suggested_qty = suggest_quantity(
-            virtual_capital, risk_pct, entry_price, stop_price
-        )
-        risk_rupees = abs(entry_price - stop_price) * suggested_qty
-        reward_rupees = abs(target_price - entry_price) * suggested_qty
-        st.info(
-            f"Suggested quantity: {suggested_qty} shares · "
-            f"Planned stop-risk: ₹{risk_rupees:,.2f} · "
-            f"Target reward before costs: ₹{reward_rupees:,.2f} · "
-            f"Reward/risk: {reward_rupees / risk_rupees:.2f}R"
-        )
-        sizing_ok = (
-            (paper_side == "LONG" and stop_price < entry_price < target_price)
-            or (paper_side == "SHORT" and target_price < entry_price < stop_price)
-        )
-        if not sizing_ok:
-            st.error("Price levels do not match the selected direction. Correct entry, stop and target.")
-    except ValueError as exc:
-        suggested_qty = 0
-        st.error(f"Position sizing unavailable: {exc}")
-        sizing_ok = False
+    entry_price = p1.number_input("Observed entry price (₹)", min_value=0.0, value=0.0, step=0.05, key="paper_entry", help="Enter the current observed market price.")
+    stop_price = p2.number_input("Stop-loss price (₹)", min_value=0.0, value=0.0, step=0.05, key="paper_stop")
+    target_price = p3.number_input("Target price (₹)", min_value=0.0, value=0.0, step=0.05, key="paper_target")
+    suggested_qty = 0
+    sizing_ok = False
+    if min(entry_price, stop_price, target_price) <= 0:
+        st.info("Enter observed entry, stop-loss and target prices to calculate position size.")
+    else:
+        try:
+            suggested_qty = suggest_quantity(
+                virtual_capital, risk_pct, entry_price, stop_price
+            )
+            risk_rupees = abs(entry_price - stop_price) * suggested_qty
+            reward_rupees = abs(target_price - entry_price) * suggested_qty
+            st.info(
+                f"Suggested quantity: {suggested_qty} shares · "
+                f"Planned stop-risk: ₹{risk_rupees:,.2f} · "
+                f"Target reward before costs: ₹{reward_rupees:,.2f} · "
+                f"Reward/risk: {reward_rupees / risk_rupees:.2f}R"
+            )
+            sizing_ok = (
+                (paper_side == "LONG" and stop_price < entry_price < target_price)
+                or (paper_side == "SHORT" and target_price < entry_price < stop_price)
+            )
+            if not sizing_ok:
+                st.error("Price levels do not match the selected direction. Correct entry, stop and target.")
+        except ValueError as exc:
+            st.error(f"Position sizing unavailable: {exc}")
     setup_notes = st.text_input(
         "Setup reason / confirmation (required)",
         placeholder="Example: 15m uptrend, 5m pullback, volume confirmation",
