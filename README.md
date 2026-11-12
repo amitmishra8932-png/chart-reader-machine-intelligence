@@ -43,4 +43,5 @@ The provider boundary is isolated in `providers/fivepaisa.py`. Authentication an
 3. Add a broker adapter with normalized candle schema.
 4. Add historical replay and leakage-safe evaluation.
 5. Add live read-only monitoring.
-6. Validate the manual paper-trading journal with controlled forward observations.\n7. Add automated signal replay only after data timestamps and signal rules are independently validated.
+6. Validate the manual paper-trading journal with controlled forward observations.
+7. Add automated signal replay only after data timestamps and signal rules are independently validated.
