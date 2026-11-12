@@ -147,7 +147,7 @@ class NSESessionIntegrityTests(unittest.TestCase):
         labels = report["session_classifications"]
         self.assertEqual(labels[0], "regular")
         self.assertEqual(labels[1], "closing_auction_session")
-        self.assertEqual(labels[2], "closing_transition")
+        self.assertEqual(labels[2], "closing_auction_session")
         self.assertEqual(labels[3], "regular")
         self.assertEqual(labels[4], "closing_auction_session")
         self.assertEqual(labels[5], "closing_auction_session")
