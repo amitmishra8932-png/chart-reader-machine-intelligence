@@ -37,8 +37,8 @@ with st.sidebar:
     st.caption("Uploaded data stays in this app session; it is not written to GitHub.")
 
 st.subheader("Workspace")
-overview, chart_tab, intelligence, library_tab, research = st.tabs(
-    ["Overview", "Chart analysis", "Intelligence", "Pattern library", "Research & validation"]
+overview, chart_tab, intelligence, structure_tab, library_tab, research = st.tabs(
+    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Pattern library", "Research & validation"]
 )
 
 data = None
@@ -95,6 +95,20 @@ with chart_tab:
             x=view["timestamp"], open=view["open"], high=view["high"],
             low=view["low"], close=view["close"], name="OHLC"
         ))
+        high_points = view[view["swing_high_confirmed"].notna()]
+        low_points = view[view["swing_low_confirmed"].notna()]
+        if not high_points.empty:
+            fig.add_trace(go.Scatter(
+                x=high_points["timestamp"], y=high_points["swing_high_confirmed"],
+                mode="markers+text", text=high_points["swing_high_label"],
+                textposition="top center", name="Confirmed swing highs"
+            ))
+        if not low_points.empty:
+            fig.add_trace(go.Scatter(
+                x=low_points["timestamp"], y=low_points["swing_low_confirmed"],
+                mode="markers+text", text=low_points["swing_low_label"],
+                textposition="bottom center", name="Confirmed swing lows"
+            ))
         for column, label in [("ema_20", "EMA 20"), ("ema_50", "EMA 50")]:
             fig.add_trace(go.Scatter(
                 x=view["timestamp"], y=view[column], mode="lines",
@@ -127,6 +141,44 @@ with intelligence:
             st.dataframe(patterns, use_container_width=True, hide_index=True)
         st.caption("Patterns are descriptive candle shapes, not standalone buy/sell signals.")
 
+
+with structure_tab:
+    st.markdown("### Market Structure Intelligence")
+    if data is None:
+        st.info("Upload historical OHLCV candles in the sidebar to inspect confirmed swing highs/lows, HH/HL/LH/LL labels and BOS/CHoCH events.")
+    else:
+        st.caption(
+            "Swing points are shown only after the right-side confirmation candles have completed. "
+            "Structure breaks require a candle close beyond a confirmed swing level."
+        )
+        a, b, c = st.columns(3)
+        a.metric("Current structure bias", str(data["structure_bias"].iloc[-1]))
+        b.metric("Confirmed swing highs", int(data["swing_high_confirmed"].notna().sum()))
+        c.metric("Confirmed swing lows", int(data["swing_low_confirmed"].notna().sum()))
+        events = data.loc[
+            data["structure_event"] != "",
+            ["timestamp", "close", "structure_event", "structure_break_level"]
+        ].tail(30)
+        st.markdown("#### Recent BOS / CHoCH events")
+        if events.empty:
+            st.info("No confirmed BOS/CHoCH events in this sample.")
+        else:
+            st.dataframe(events, use_container_width=True, hide_index=True)
+        swings = data.loc[
+            (data["swing_high_label"] != "") | (data["swing_low_label"] != ""),
+            ["timestamp", "swing_high_label", "swing_low_label",
+             "swing_high_confirmed", "swing_low_confirmed"]
+        ].tail(40)
+        st.markdown("#### Confirmed swing sequence")
+        if swings.empty:
+            st.info("Not enough candles to confirm swing points yet.")
+        else:
+            st.dataframe(swings, use_container_width=True, hide_index=True)
+        st.caption(
+            "HH/HL/LH/LL describe successive confirmed pivots. BOS/CHoCH are structural events, "
+            "not standalone trade signals. Pivot confirmation intentionally introduces delay "
+            "to avoid look-ahead bias."
+        )
 
 with library_tab:
     st.markdown("### Candle & pattern behaviour research registry")
