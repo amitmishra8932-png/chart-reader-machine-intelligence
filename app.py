@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import json
 from pathlib import Path
 
@@ -11,7 +11,11 @@ from engine.indicators import add_indicators
 from engine.market_structure import add_market_structure
 from engine.outcomes import label_forward_returns, outcome_summary
 from engine.patterns import detect_patterns
-from providers.fivepaisa import connection_status
+from data.nifty50 import NIFTY50_SYMBOLS
+from providers.fivepaisa import (
+    connection_status, get_credentials, build_oauth_url, exchange_request_token,
+    fetch_scrip_master, resolve_scrip_code, fetch_historical_candles,
+)
 
 st.set_page_config(
     page_title="Chart Reader | Machine Intelligence",
@@ -23,7 +27,23 @@ st.set_page_config(
 st.title("📈 Chart Reader — Machine Intelligence")
 st.caption("An evidence-led market analysis laboratory · 5paisa integration in progress")
 
-provider = connection_status()
+if "fivepaisa_access_token" not in st.session_state:
+    st.session_state["fivepaisa_access_token"] = ""
+if "fivepaisa_client_code" not in st.session_state:
+    st.session_state["fivepaisa_client_code"] = ""
+credentials = get_credentials(st.secrets)
+request_token = st.query_params.get("RequestToken")
+if request_token and credentials["api_key"] and credentials["encryption_key"] and credentials["user_id"]:
+    try:
+        token, client_code = exchange_request_token(credentials, request_token)
+        st.session_state["fivepaisa_access_token"] = token
+        st.session_state["fivepaisa_client_code"] = client_code
+        st.query_params.clear()
+        st.success("5paisa authentication successful for this session.")
+    except Exception as exc:
+        st.error(str(exc))
+        st.query_params.clear()
+provider = connection_status(st.secrets, st.session_state["fivepaisa_access_token"])
 with st.sidebar:
     st.header("Project controls")
     st.info("Research build · Read-only · No order placement")
@@ -35,10 +55,25 @@ with st.sidebar:
     st.caption("Required columns: timestamp (or date), open, high, low, close. Volume is optional.")
     symbol = st.text_input("Instrument label", value="Uploaded instrument")
     st.caption("Uploaded data stays in this app session; it is not written to GitHub.")
+    st.divider()
+    st.subheader("5paisa read-only login")
+    if credentials["api_key"] and credentials["redirect_url"]:
+        oauth_url = build_oauth_url(credentials["api_key"], credentials["redirect_url"])
+        st.link_button("Authenticate with 5paisa", oauth_url, use_container_width=True)
+        if st.session_state["fivepaisa_access_token"]:
+            st.success("Authenticated for this session")
+            if st.button("Clear 5paisa session"):
+                st.session_state["fivepaisa_access_token"] = ""
+                st.session_state["fivepaisa_client_code"] = ""
+                st.rerun()
+        else:
+            st.caption("Login takes place on 5paisa's secure page. Its RequestToken returns to the registered callback URL.")
+    else:
+        st.warning("Configure FIVEPAISA_API_KEY, FIVEPAISA_ENCRYPTION_KEY, FIVEPAISA_USER_ID and FIVEPAISA_REDIRECT_URL in Streamlit Secrets.")
 
 st.subheader("Workspace")
-overview, chart_tab, intelligence, structure_tab, library_tab, research = st.tabs(
-    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Pattern library", "Research & validation"]
+overview, chart_tab, intelligence, structure_tab, historical_tab, library_tab, research = st.tabs(
+    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Historical Data Centre", "Pattern library", "Research & validation"]
 )
 
 data = None
@@ -180,6 +215,94 @@ with structure_tab:
             "to avoid look-ahead bias."
         )
 
+with historical_tab:
+    st.markdown("### 5paisa Historical Data Centre")
+    st.caption("NIFTY 50 cash equities · 5-minute and 15-minute candles · read-only market-data access")
+    st.info("5paisa supports 5m and 15m historical candles. Intraday requests are limited to six months per request.")
+    st.write(f"**Universe:** {len(NIFTY50_SYMBOLS)} NIFTY 50 constituents (list dated 28-Oct-2026).")
+    if not st.session_state["fivepaisa_access_token"]:
+        st.warning("Authenticate with 5paisa from the sidebar before requesting historical candles.")
+    else:
+        left, right = st.columns(2)
+        start_date = left.date_input("From date", value=date.today() - timedelta(days=30), max_value=date.today())
+        end_date = right.date_input("To date", value=date.today(), max_value=date.today())
+        selected_symbols = st.multiselect(
+            "NIFTY 50 stocks", options=NIFTY50_SYMBOLS,
+            default=["RELIANCE", "HDFCBANK", "INFY"],
+            help="All 50 constituents are available. Fetch up to 10 stocks per batch."
+        )
+        selected_intervals = st.multiselect("Candle timeframes", ["5m", "15m"], default=["5m", "15m"])
+        st.caption("Maximum 10 stocks per batch (up to 20 sequential historical requests). No orders are placed.")
+        if st.button("Fetch historical candles", type="primary", use_container_width=True):
+            if start_date > end_date:
+                st.error("From date must be on or before To date.")
+            elif (end_date - start_date).days > 183:
+                st.error("Choose a date range of six months or less.")
+            elif not selected_symbols or not selected_intervals:
+                st.error("Select at least one stock and one timeframe.")
+            elif len(selected_symbols) > 10:
+                st.error("Please fetch no more than 10 stocks per batch.")
+            else:
+                try:
+                    with st.spinner("Downloading 5paisa NSE equity scrip master..."):
+                        master = fetch_scrip_master()
+                    collected, failures = [], []
+                    total = len(selected_symbols) * len(selected_intervals)
+                    progress, status = st.progress(0), st.empty()
+                    completed = 0
+                    for stock in selected_symbols:
+                        try:
+                            code = resolve_scrip_code(master, stock)
+                        except Exception as exc:
+                            failures.append(f"{stock}: {exc}")
+                            completed += len(selected_intervals)
+                            progress.progress(min(completed / total, 1.0))
+                            continue
+                        for timeframe in selected_intervals:
+                            status.write(f"Fetching {stock} · {timeframe}...")
+                            try:
+                                candles = fetch_historical_candles(
+                                    st.session_state["fivepaisa_access_token"],
+                                    code, timeframe, start_date, end_date
+                                )
+                                candles["symbol"] = stock
+                                candles["timeframe"] = timeframe
+                                candles["scrip_code"] = code
+                                collected.append(candles)
+                            except Exception as exc:
+                                failures.append(f"{stock} ({timeframe}): {exc}")
+                            completed += 1
+                            progress.progress(min(completed / total, 1.0))
+                    status.empty()
+                    st.session_state["historical_data"] = pd.concat(collected, ignore_index=True) if collected else pd.DataFrame()
+                    st.session_state["historical_data_failures"] = failures
+                except Exception as exc:
+                    st.error(str(exc))
+    hist = st.session_state.get("historical_data", pd.DataFrame())
+    if not hist.empty:
+        st.success(f"Fetched {len(hist):,} candles across {hist['symbol'].nunique()} stocks and {hist['timeframe'].nunique()} timeframes.")
+        p, q, r = st.columns(3)
+        p.metric("Stocks received", int(hist["symbol"].nunique()))
+        q.metric("Candle rows", f"{len(hist):,}")
+        r.metric("Timeframes", ", ".join(sorted(hist["timeframe"].unique())))
+        chosen_symbol = st.selectbox("Preview stock", sorted(hist["symbol"].unique()))
+        choices = sorted(hist.loc[hist["symbol"] == chosen_symbol, "timeframe"].unique())
+        chosen_interval = st.selectbox("Preview timeframe", choices)
+        preview = hist[(hist["symbol"] == chosen_symbol) & (hist["timeframe"] == chosen_interval)]
+        st.dataframe(preview.tail(100), use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download fetched NIFTY 50 candles (CSV)",
+            data=hist.to_csv(index=False).encode("utf-8"),
+            file_name="chart_reader_nifty50_historical_ohlcv.csv",
+            mime="text/csv", use_container_width=True
+        )
+    failures = st.session_state.get("historical_data_failures", [])
+    if failures:
+        with st.expander(f"Fetch warnings ({len(failures)})"):
+            for item in failures:
+                st.write("• " + item)
+    st.caption("NIFTY 50 membership is dated and should be refreshed after NSE reviews. Actual historical availability depends on 5paisa account permissions and API response.")
+    
 with library_tab:
     st.markdown("### Candle & pattern behaviour research registry")
     registry_path = Path(__file__).parent / "data" / "pattern_registry.json"
