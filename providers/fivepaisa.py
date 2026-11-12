@@ -17,6 +17,9 @@ import requests
 
 OAUTH_BASE = "https://dev-openapi.5paisa.com/WebVendorLogin/VLogin/Index"
 ACCESS_TOKEN_URL = "https://openapi.5paisa.com/VendorsAPI/Service1.svc/GetAccessToken"
+MARKET_FEED_URL = "https://Openapi.5paisa.com/VendorsAPI/Service1.svc/V1/MarketFeed"
+MARKET_FEED_API_UID = "ka7SFqAU6SC"
+# Retained for legacy parser tests; the app no longer depends on this cache endpoint.
 SCRIP_MASTER_URL = "https://openapi.5paisa.com/VendorsAPI/Service1.svc/ScripMaster/segment/All"
 HISTORICAL_URL = "https://openapi.5paisa.com/V2/historical/N/C/{scrip_code}/{interval}"
 
@@ -170,6 +173,76 @@ def parse_scrip_master(csv_text: str) -> pd.DataFrame:
     if frame.empty:
         raise RuntimeError("5paisa scrip master downloaded, but it contained no usable NSE cash-equity rows.")
     return frame.drop_duplicates("symbol_key")
+
+
+
+def resolve_scrip_codes_via_market_feed(
+    access_token: str, api_key: str, client_code: str, symbols: list[str],
+) -> dict[str, int]:
+    """Resolve NSE cash symbols to 5paisa ScripCodes using the authenticated
+    MarketFeed API's documented ScripData input and returned Token field.
+
+    This avoids depending on the separate public ScripMaster download cache.
+    It only requests quotes/identifiers; it never places or modifies orders.
+    """
+    cleaned = list(dict.fromkeys(str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()))
+    if not cleaned:
+        return {}
+    if not access_token or not api_key or not client_code:
+        raise ValueError("5paisa session, API key and client code are required to resolve stock codes.")
+    payload = {
+        "head": {"key": api_key, "requestCode": "5PMF"},
+        "body": {
+            "ClientCode": client_code,
+            "COUNT": client_code,
+            "ClientLoginType": 0,
+            "MarketFeedData": [
+                {"Exch": "N", "ExchType": "C", "ScripCode": "0", "ScripData": f"{symbol}_EQ"}
+                for symbol in cleaned
+            ],
+            "LastRequestTime": f"/Date({int(pd.Timestamp.now().timestamp())})/",
+            "RefreshRate": "H",
+        },
+    }
+    try:
+        response = requests.post(
+            MARKET_FEED_URL,
+            json=payload,
+            headers={
+                "Authorization": "Bearer " + access_token,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "5Paisa-API-Uid": MARKET_FEED_API_UID,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as exc:
+        raise RuntimeError("Could not resolve 5paisa stock codes through the authenticated MarketFeed API.") from exc
+    except ValueError as exc:
+        raise RuntimeError("5paisa MarketFeed returned an unreadable symbol-resolution response.") from exc
+
+    body = result.get("body") or result.get("Body") or {}
+    head = result.get("head") or result.get("Head") or {}
+    status = body.get("Status", body.get("status", head.get("status")))
+    message = body.get("Message") or body.get("message") or head.get("statusDescription")
+    if status not in (None, 0, "0", "Success", "success"):
+        raise RuntimeError("5paisa MarketFeed could not resolve stock codes: " + str(message or status))
+    rows = body.get("Data") or body.get("data") or []
+    resolved = {}
+    for row in rows:
+        symbol = row.get("Symbol") or row.get("symbol")
+        token = row.get("Token") or row.get("token") or row.get("ScripCode") or row.get("scripCode")
+        if symbol and token:
+            try:
+                resolved[_normalise_symbol(symbol)] = int(token)
+            except (TypeError, ValueError):
+                continue
+    missing = [symbol for symbol in cleaned if _normalise_symbol(symbol) not in resolved]
+    if missing:
+        raise RuntimeError("5paisa MarketFeed did not return a valid NSE cash ScripCode for: " + ", ".join(missing))
+    return {symbol: resolved[_normalise_symbol(symbol)] for symbol in cleaned}
 
 
 def fetch_scrip_master() -> pd.DataFrame:

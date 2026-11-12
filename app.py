@@ -15,7 +15,7 @@ from engine.patterns import detect_patterns
 from data.nifty50 import NIFTY50_SYMBOLS
 from providers.fivepaisa import (
     connection_status, get_credentials, build_oauth_url, exchange_request_token,
-    fetch_scrip_master, resolve_scrip_code, fetch_historical_candles,
+    resolve_scrip_codes_via_market_feed, fetch_historical_candles,
 )
 
 st.set_page_config(
@@ -252,20 +252,20 @@ with historical_tab:
                 st.error("Please fetch no more than 10 stocks per batch.")
             else:
                 try:
-                    with st.spinner("Downloading 5paisa NSE equity scrip master..."):
-                        master = fetch_scrip_master()
+                    credentials = get_credentials(st.secrets)
+                    with st.spinner("Resolving NSE stock codes through 5paisa MarketFeed..."):
+                        scrip_codes = resolve_scrip_codes_via_market_feed(
+                            st.session_state["fivepaisa_access_token"],
+                            credentials["api_key"],
+                            st.session_state["fivepaisa_client_code"],
+                            selected_symbols,
+                        )
                     collected, failures = [], []
                     total = len(selected_symbols) * len(selected_intervals)
                     progress, status = st.progress(0), st.empty()
                     completed = 0
                     for stock in selected_symbols:
-                        try:
-                            code = resolve_scrip_code(master, stock)
-                        except Exception as exc:
-                            failures.append(f"{stock}: {exc}")
-                            completed += len(selected_intervals)
-                            progress.progress(min(completed / total, 1.0))
-                            continue
+                        code = scrip_codes[stock]
                         for timeframe in selected_intervals:
                             status.write(f"Fetching {stock} · {timeframe}...")
                             try:
