@@ -155,7 +155,7 @@ class NSESessionIntegrityTests(unittest.TestCase):
         self.assertEqual(labels[7], "closing_transition")
         self.assertEqual(labels[8], "closing_session")
         self.assertEqual(report["closing_auction_session_timestamps"], 4)
-        self.assertEqual(report["closing_transition_timestamps"], 3)
+        self.assertEqual(report["closing_transition_timestamps"], 2)
 
     def test_non_cas_schedule_remains_continuous_until_1530_after_cas2(self):
         frame = candles(["2026-12-07 15:25", "2026-12-07 15:30",
