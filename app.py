@@ -107,16 +107,23 @@ with overview:
         st.info("Upload a historical OHLCV CSV in the sidebar to use the independent analysis engine while 5paisa access is being clarified.")
 
     st.markdown("### Development roadmap")
+    st.caption("Updated against the merged GitHub main branch · Completed items are checked; live-data verification remains pending.")
     st.markdown(
         """
+        **Completed**
         - [x] Public Streamlit application and secure secret-storage pattern
         - [x] CSV OHLCV ingestion and validation
         - [x] Initial indicators and explainable candle detectors
         - [x] Trend / swing structure and forward-return research labels
-        - [ ] Automated unit-test execution and broader edge-case coverage
-        - [ ] 5paisa authentication and verified historical-data adapter
-        - [ ] Live read-only market monitoring
-        - [ ] Walk-forward ML experiments and paper validation
+        - [x] **Phase 5:** Automated unit tests and expanded edge-case coverage
+        - [x] **Phase 6:** Historical OHLCV data-quality audit and dashboard report
+
+        **Next milestones**
+        - [ ] Verify 5paisa authentication and historical candles with real account data
+        - [ ] Live read-only market monitoring (after data verification)
+        - [ ] Walk-forward backtesting, ML experiments and paper validation
+
+        *Research only: no automatic order placement. Historical-data gap counts are estimates and should be checked against exchange sessions.*
         """
     )
 
