@@ -89,3 +89,65 @@ def audit_historical_ohlcv(frame: pd.DataFrame, interval: str = "5m") -> dict:
         "warnings": warnings,
         "quality_status": "Review required" if warnings else "No basic integrity issues detected",
     }
+
+
+def audit_nse_session_integrity(
+    frame: pd.DataFrame,
+    interval: str = "5m",
+    holidays: set | None = None,
+) -> dict:
+    """Flag NSE cash-session timestamp anomalies without changing source rows.
+
+    Assumes candle timestamps represent bar start times: 09:15 is the first
+    regular-session candle and the last permitted start is 15:25 for 5m or
+    15:15 for 15m. Holiday dates may be supplied by the caller; no static
+    holiday calendar is embedded because exchange holidays vary by year.
+    """
+    interval_minutes = {"5m": 5, "15m": 15}
+    if interval not in interval_minutes:
+        raise ValueError("Session audit supports 5m and 15m intervals only.")
+    if frame is None or frame.empty:
+        raise ValueError("Historical dataset is empty.")
+    if "timestamp" not in frame.columns:
+        raise ValueError("Missing required columns: timestamp")
+
+    timestamps = pd.to_datetime(frame["timestamp"], errors="coerce")
+    valid = timestamps.dropna()
+    holiday_set = set(holidays or set())
+    weekend_mask = valid.dt.weekday >= 5
+    holiday_mask = valid.dt.date.isin(holiday_set)
+    minutes = valid.dt.hour * 60 + valid.dt.minute
+    open_minutes = 9 * 60 + 15
+    close_minutes = 15 * 60 + 30
+    interval_size = interval_minutes[interval]
+    outside_session = (minutes < open_minutes) | (minutes >= close_minutes)
+    misaligned = ((minutes - open_minutes) % interval_size) != 0
+    # A start-time candle must finish by the regular 15:30 close.
+    too_late_start = minutes + interval_size > close_minutes
+    return {
+        "rows_checked": int(len(frame)),
+        "invalid_timestamps": int(timestamps.isna().sum()),
+        "weekend_timestamps": int(weekend_mask.sum()),
+        "known_holiday_timestamps": int(holiday_mask.sum()),
+        "outside_session_timestamps": int(outside_session.sum()),
+        "misaligned_timestamps": int(misaligned.sum()),
+        "too_late_candle_starts": int(too_late_start.sum()),
+        "session_anomaly_rows": int((weekend_mask | holiday_mask | outside_session | misaligned | too_late_start).sum()),
+        "timestamp_convention": "Assumed candle start time; confirm with provider documentation.",
+        "warnings": (
+            ["Weekend-dated candles found; regular NSE cash session is closed on weekends."]
+            if weekend_mask.any() else []
+        ) + (
+            ["Candles fall on supplied NSE holiday dates."]
+            if holiday_mask.any() else []
+        ) + (
+            ["Candles fall outside the regular NSE cash session (09:15–15:30)."]
+            if outside_session.any() else []
+        ) + (
+            ["Candle timestamps do not align to the selected interval from 09:15."]
+            if misaligned.any() else []
+        ) + (
+            ["Candle start time would extend beyond the 15:30 regular-session close."]
+            if too_late_start.any() else []
+        ),
+    }
