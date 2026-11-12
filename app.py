@@ -10,6 +10,7 @@ from engine.data_loader import read_uploaded_csv
 from engine.indicators import add_indicators
 from engine.market_structure import add_market_structure
 from engine.outcomes import label_forward_returns, outcome_summary
+from engine.historical_validation import audit_historical_ohlcv
 from engine.patterns import detect_patterns
 from data.nifty50 import NIFTY50_SYMBOLS
 from providers.fivepaisa import (
@@ -291,6 +292,46 @@ with historical_tab:
         chosen_interval = st.selectbox("Preview timeframe", choices)
         preview = hist[(hist["symbol"] == chosen_symbol) & (hist["timeframe"] == chosen_interval)]
         st.dataframe(preview.tail(100), use_container_width=True, hide_index=True)
+
+        st.markdown("#### Historical data quality audit")
+        audit_rows = []
+        for (audit_symbol, audit_interval), group in hist.groupby(["symbol", "timeframe"]):
+            try:
+                audit = audit_historical_ohlcv(
+                    group[["timestamp", "open", "high", "low", "close", "volume"]],
+                    audit_interval,
+                )
+                audit_rows.append({
+                    "Stock": audit_symbol,
+                    "Timeframe": audit_interval,
+                    "Rows": audit["rows"],
+                    "Duplicate timestamps": audit["duplicate_timestamps"],
+                    "Invalid OHLC rows": audit["invalid_ohlc_rows"],
+                    "Negative volume rows": audit["negative_volume_rows"],
+                    "Possible missing candles": audit["estimated_missing_intraday_bars"],
+                    "Quality status": audit["quality_status"],
+                    "Warnings": " | ".join(audit["warnings"]),
+                })
+            except ValueError as exc:
+                audit_rows.append({
+                    "Stock": audit_symbol,
+                    "Timeframe": audit_interval,
+                    "Rows": len(group),
+                    "Quality status": "Audit error",
+                    "Warnings": str(exc),
+                })
+        audit_frame = pd.DataFrame(audit_rows)
+        st.dataframe(audit_frame, use_container_width=True, hide_index=True)
+        st.caption(
+            "Missing-candle counts are estimates within the same date. "
+            "Check exchange sessions and corporate-action adjustments before interpreting anomalies."
+        )
+        st.download_button(
+            "Download data quality audit (CSV)",
+            data=audit_frame.to_csv(index=False).encode("utf-8"),
+            file_name="chart_reader_data_quality_audit.csv",
+            mime="text/csv", use_container_width=True
+        )
         st.download_button(
             "Download fetched NIFTY 50 candles (CSV)",
             data=hist.to_csv(index=False).encode("utf-8"),
