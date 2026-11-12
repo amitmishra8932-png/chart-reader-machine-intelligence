@@ -1,7 +1,7 @@
 import unittest
 import pandas as pd
 
-from engine.historical_validation import audit_historical_ohlcv
+from engine.historical_validation import audit_historical_ohlcv, audit_nse_session_integrity
 
 
 def candles(times, volume=None):
@@ -97,4 +97,30 @@ class NSESessionIntegrityTests(unittest.TestCase):
         frame = candles(["2026-11-09 09:15"])
         report = audit_nse_session_integrity(frame, "15m", holidays={date(2026, 11, 9)})
         self.assertEqual(report["known_holiday_timestamps"], 1)
+        self.assertEqual(report["session_anomaly_rows"], 1)
+
+
+    def test_muhurat_special_session_is_not_misclassified_as_weekend_closure(self):
+        frame = candles(["2026-11-08 14:20", "2026-11-08 14:25", "2026-11-08 15:35"])
+        report = audit_nse_session_integrity(frame, "5m")
+        self.assertEqual(report["special_session_timestamps"], 3)
+        self.assertEqual(report["weekend_timestamps"], 3)
+        self.assertEqual(report["session_anomaly_rows"], 0)
+
+    def test_unscheduled_weekend_candle_remains_an_anomaly(self):
+        report = audit_nse_session_integrity(candles(["2026-11-15 14:20"]), "5m")
+        self.assertEqual(report["session_anomaly_rows"], 1)
+        self.assertEqual(report["special_session_timestamps"], 0)
+
+    def test_closing_auction_and_closing_session_are_classified_separately(self):
+        frame = candles(["2026-11-12 15:29", "2026-11-12 15:50", "2026-11-12 15:55"])
+        report = audit_nse_session_integrity(frame, "5m")
+        self.assertEqual(report["closing_auction_transition_timestamps"], 1)
+        self.assertEqual(report["closing_session_timestamps"], 2)
+        self.assertEqual(report["outside_session_timestamps"], 0)
+        self.assertEqual(report["non_regular_session_rows"], 3)
+
+    def test_regular_session_misalignment_is_still_flagged(self):
+        report = audit_nse_session_integrity(candles(["2026-11-12 09:17"]), "5m")
+        self.assertEqual(report["misaligned_timestamps"], 1)
         self.assertEqual(report["session_anomaly_rows"], 1)
