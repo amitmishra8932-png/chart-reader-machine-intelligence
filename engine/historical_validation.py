@@ -168,14 +168,16 @@ def audit_nse_session_integrity(
             anomaly_indices.add(index)
             continue
 
-        if open_minutes <= minute < regular_close:
+        if auction_start <= minute < closing_session_start:
+            # NSE closing-auction order entry begins at 15:20; transition
+            # continues through 15:50. Classify it separately from regular bars.
+            classifications[index] = "closing_auction_transition"
+            auction_count += 1
+        elif open_minutes <= minute < auction_start:
             classifications[index] = "regular"
             if (minute - open_minutes) % interval_size:
                 misaligned_count += 1
                 anomaly_indices.add(index)
-        elif auction_start <= minute < closing_session_start:
-            classifications[index] = "closing_auction_transition"
-            auction_count += 1
         elif closing_session_start <= minute < exchange_close:
             classifications[index] = "closing_session"
             closing_count += 1
