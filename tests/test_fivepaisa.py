@@ -62,7 +62,7 @@ class FivePaisaAdapterTests(unittest.TestCase):
         response = Mock()
         response.ok = True
         response.content = gzip.compress(
-            b"Exch,ExchType,ScripCode,ScripData\\nN,C,1333,HDFCBANK_EQ\\n"
+            b"Exch,ExchType,ScripCode,ScripData\nN,C,1333,HDFCBANK_EQ\n"
         )
         response.headers = {"Content-Type": "application/gzip"}
         mock_get.return_value = response
@@ -89,7 +89,7 @@ class FivePaisaAdapterTests(unittest.TestCase):
 
     def test_scrip_master_reports_changed_columns(self):
         with self.assertRaisesRegex(RuntimeError, "Received columns"):
-            parse_scrip_master("unexpected,columns\\na,b\\n")
+            parse_scrip_master("unexpected,columns\na,b\n")
 
 if __name__ == "__main__":
     unittest.main()
