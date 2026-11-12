@@ -38,6 +38,19 @@ class EngineTests(unittest.TestCase):
         result = detect_patterns(sample_frame())
         self.assertIn("detected_patterns", result)
         self.assertIn("pattern_doji", result)
+        expected = [
+            "pattern_long_legged_doji", "pattern_dragonfly_doji",
+            "pattern_gravestone_doji", "pattern_hanging_man",
+            "pattern_inverted_hammer", "pattern_piercing_line",
+            "pattern_dark_cloud_cover", "pattern_morning_star",
+            "pattern_evening_star", "pattern_tweezer_bottom",
+            "pattern_tweezer_top", "pattern_bullish_marubozu",
+            "pattern_bearish_marubozu", "pattern_spinning_top",
+            "pattern_three_white_soldiers", "pattern_three_black_crows",
+        ]
+        for column in expected:
+            self.assertIn(column, result)
+            self.assertFalse(result[column].isna().any())
 
     def test_forward_return_and_summary(self):
         result = label_forward_returns(detect_patterns(sample_frame()), horizons=(3,))
