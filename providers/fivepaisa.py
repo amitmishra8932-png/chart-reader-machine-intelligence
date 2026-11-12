@@ -172,9 +172,24 @@ def parse_historical_candles(payload: dict) -> pd.DataFrame:
     return frame.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
 
 
-def fetch_historical_candles(access_token: str, scrip_code: int, interval: str, start_date, end_date) -> pd.DataFrame:
+def fetch_historical_candles(
+    access_token: str, scrip_code: int, interval: str, start_date, end_date,
+    client_code: str = "",
+) -> pd.DataFrame:
+    """Fetch historical candles using the documented GET endpoint.
+
+    The x-clientcode header is required by the Xstream historical-candle API.
+    Never include credentials or tokens in raised error messages.
+    """
     if interval not in {"5m", "15m"}:
         raise ValueError("Only 5m and 15m intervals are enabled in this build.")
+    if not access_token:
+        raise ValueError("5paisa session is missing. Authenticate again from the sidebar.")
+    if not client_code:
+        raise ValueError(
+            "5paisa did not return a ClientCode during login. Please sign out and "
+            "authenticate again; if it persists, ask 5paisa support to verify API access."
+        )
     start = pd.Timestamp(start_date).date()
     end = pd.Timestamp(end_date).date()
     if start > end:
@@ -183,17 +198,30 @@ def fetch_historical_candles(access_token: str, scrip_code: int, interval: str, 
         raise ValueError("5paisa intraday historical requests are limited to six months per request.")
     url = HISTORICAL_URL.format(scrip_code=int(scrip_code), interval=interval)
     try:
-        response = requests.post(
+        response = requests.get(
             url,
             params={"from": start.isoformat(), "end": end.isoformat()},
-            headers={"Authorization": "bearer " + access_token, "Content-Type": "application/json"},
-            data="",
+            headers={
+                "Authorization": "Bearer " + access_token,
+                "x-clientcode": str(client_code),
+                "Accept": "application/json",
+            },
             timeout=30,
         )
-        response.raise_for_status()
-        payload = response.json()
+        if not response.ok:
+            # Keep provider diagnostics useful without ever echoing request headers.
+            detail = (response.text or "").strip().replace("\\n", " ")[:400]
+            raise RuntimeError(
+                f"5paisa historical API returned HTTP {response.status_code} "
+                f"for {interval}. {detail or 'No response details provided.'}"
+            )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError("5paisa historical API returned a non-JSON response.") from exc
     except requests.RequestException as exc:
-        raise RuntimeError(f"5paisa historical-data request failed for scrip {scrip_code} ({interval}).") from exc
-    except ValueError as exc:
-        raise RuntimeError("5paisa returned an unreadable historical-data response.") from exc
+        raise RuntimeError(
+            f"Could not reach the 5paisa historical API for scrip {scrip_code} ({interval}). "
+            "Check Streamlit network access and retry."
+        ) from exc
     return parse_historical_candles(payload)
