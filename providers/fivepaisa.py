@@ -37,12 +37,22 @@ def _secret(secrets, *names: str) -> str:
 
 
 def get_credentials(secrets) -> dict:
-    """Read supported Streamlit secret names without exposing their values."""
+    """Read supported top-level or [fivepaisa] Streamlit secrets."""
+    nested = {}
+    try:
+        nested = secrets.get("fivepaisa", {}) or {}
+    except Exception:
+        nested = {}
+    class SecretView:
+        def get(self, key, default=None):
+            value = _secret(secrets, key)
+            return value if value else _secret(nested, key, key.lower())
+    view = SecretView()
     return {
-        "api_key": _secret(secrets, "FIVEPAISA_API_KEY", "api_key", "user_key"),
-        "encryption_key": _secret(secrets, "FIVEPAISA_ENCRYPTION_KEY", "encryption_key"),
-        "user_id": _secret(secrets, "FIVEPAISA_USER_ID", "user_id"),
-        "redirect_url": _secret(secrets, "FIVEPAISA_REDIRECT_URL", "redirect_url"),
+        "api_key": _secret(view, "FIVEPAISA_API_KEY", "FIVEPAISA_APP_KEY", "API_KEY", "APP_KEY", "api_key", "user_key"),
+        "encryption_key": _secret(view, "FIVEPAISA_ENCRYPTION_KEY", "ENCRYPTION_KEY", "encryption_key"),
+        "user_id": _secret(view, "FIVEPAISA_USER_ID", "USER_ID", "user_id"),
+        "redirect_url": _secret(view, "FIVEPAISA_REDIRECT_URL", "REDIRECT_URL", "redirect_url"),
     }
 
 
