@@ -24,8 +24,8 @@ class FivePaisaAdapterTests(unittest.TestCase):
         master = parse_scrip_master(csv_text)
         self.assertEqual(resolve_scrip_code(master, "ITC"), 2885)
 
-    @patch("providers.fivepaisa.requests.get")
-    def test_historical_fetch_uses_get_and_client_code_header(self, mock_get):
+    @patch("providers.fivepaisa.requests.post")
+    def test_historical_fetch_uses_post_and_client_code_header(self, mock_get):
         response = Mock()
         response.ok = True
         response.json.return_value = {
