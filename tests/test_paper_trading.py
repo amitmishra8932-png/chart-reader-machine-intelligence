@@ -49,6 +49,19 @@ class PaperTradingTests(unittest.TestCase):
                 quantity=500, capital=100000,
             )
 
+    def test_open_trade_enforces_total_cash_exposure(self):
+        first = open_paper_trade(
+            [], symbol="RELIANCE", timeframe="5m", side="LONG",
+            entry_price=100, stop_price=99, target_price=105,
+            quantity=500, capital=100000,
+        )
+        with self.assertRaisesRegex(ValueError, "cash-exposure"):
+            open_paper_trade(
+                [first], symbol="HDFCBANK", timeframe="5m", side="LONG",
+                entry_price=100, stop_price=99, target_price=105,
+                quantity=600, capital=100000,
+            )
+
     def test_only_one_open_trade_per_symbol(self):
         first = open_paper_trade(
             [], symbol="RELIANCE", timeframe="5m", side="LONG",
