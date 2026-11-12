@@ -32,7 +32,7 @@ class EngineTests(unittest.TestCase):
         self.assertIn("rsi_14", result)
         self.assertIn("atr_14", result)
         self.assertIn("trend_state", result)
-        self.assertEqual(len(result), 80)
+        for column in ["swing_high_confirmed", "swing_low_confirmed", "swing_high_label", "swing_low_label", "structure_event", "structure_bias"]:\n            self.assertIn(column, result)\n        self.assertEqual(len(result), 80)
 
     def test_pattern_detector_adds_labels(self):
         result = detect_patterns(sample_frame())
