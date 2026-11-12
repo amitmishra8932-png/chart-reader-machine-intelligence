@@ -178,18 +178,13 @@ def fetch_historical_candles(
 ) -> pd.DataFrame:
     """Fetch historical candles using the Xstream historical-candles endpoint.
 
-    The x-clientcode header is required by the Xstream historical-candle API.
-    Never include credentials or tokens in raised error messages.
+    The official 5paisa Python SDK calls this endpoint with GET and a Bearer
+    token. Never include credentials or tokens in raised error messages.
     """
     if interval not in {"5m", "15m"}:
         raise ValueError("Only 5m and 15m intervals are enabled in this build.")
     if not access_token:
         raise ValueError("5paisa session is missing. Authenticate again from the sidebar.")
-    if not client_code:
-        raise ValueError(
-            "5paisa did not return a ClientCode during login. Please sign out and "
-            "authenticate again; if it persists, ask 5paisa support to verify API access."
-        )
     start = pd.Timestamp(start_date).date()
     end = pd.Timestamp(end_date).date()
     if start > end:
@@ -198,16 +193,13 @@ def fetch_historical_candles(
         raise ValueError("5paisa intraday historical requests are limited to six months per request.")
     url = HISTORICAL_URL.format(scrip_code=int(scrip_code), interval=interval)
     try:
-        response = requests.post(
+        response = requests.get(
             url,
             params={"from": start.isoformat(), "end": end.isoformat()},
             headers={
                 "Authorization": "Bearer " + access_token,
-                "x-clientcode": str(client_code),
-                "Content-Type": "application/json",
                 "Accept": "application/json",
             },
-            data="",
             timeout=30,
         )
         if not response.ok:
