@@ -10,6 +10,10 @@ from engine.data_loader import read_uploaded_csv
 from engine.indicators import add_indicators
 from engine.market_structure import add_market_structure
 from engine.outcomes import label_forward_returns, outcome_summary
+from engine.paper_trading import (
+    close_paper_trade, open_paper_trade, paper_trading_summary,
+    suggest_quantity, trades_frame,
+)
 from engine.historical_validation import audit_historical_ohlcv, audit_nse_session_integrity
 from engine.patterns import detect_patterns
 from data.nifty50 import NIFTY50_SYMBOLS
@@ -73,9 +77,12 @@ with st.sidebar:
         st.warning("Configure FIVEPAISA_API_KEY, FIVEPAISA_ENCRYPTION_KEY, FIVEPAISA_USER_ID and FIVEPAISA_REDIRECT_URL in Streamlit Secrets.")
 
 st.subheader("Workspace")
-overview, chart_tab, intelligence, structure_tab, historical_tab, library_tab, research = st.tabs(
-    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Historical Data Centre", "Pattern library", "Research & validation"]
+overview, chart_tab, intelligence, structure_tab, historical_tab, paper_tab, library_tab, research = st.tabs(
+    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Historical Data Centre", "Paper trading", "Pattern library", "Research & validation"]
 )
+
+if "paper_trades" not in st.session_state:
+    st.session_state["paper_trades"] = []
 
 data = None
 error = None
@@ -377,6 +384,152 @@ with historical_tab:
                 st.write("• " + item)
     st.caption("NIFTY 50 membership is dated and should be refreshed after NSE reviews. Actual historical availability depends on 5paisa account permissions and API response.")
     
+with paper_tab:
+    st.markdown("### Paper Trading — Manual Simulation")
+    st.warning(
+        "Simulation only. This module does not place orders or fetch live quotes. "
+        "Enter prices observed from your live market screen; historical CSV closes are not live prices."
+    )
+    st.caption(
+        "Start with the five-stock validation group: RELIANCE, HDFCBANK, ICICIBANK, "
+        "ADANIENT and ADANIPORTS. No automated strategy signals are generated."
+    )
+
+    cfg_left, cfg_mid, cfg_right = st.columns(3)
+    virtual_capital = cfg_left.number_input(
+        "Virtual starting capital (₹)", min_value=1000.0, value=100000.0, step=5000.0,
+        key="paper_virtual_capital"
+    )
+    risk_pct = cfg_mid.number_input(
+        "Risk budget per trade (%)", min_value=0.1, max_value=2.0, value=1.0, step=0.1,
+        key="paper_risk_pct",
+        help="Position size is capped using the distance from entry to stop."
+    )
+    friction_bps = cfg_right.number_input(
+        "Estimated round-trip friction (bps)", min_value=0.0, max_value=100.0,
+        value=10.0, step=1.0, key="paper_friction_bps",
+        help="A simple estimate for costs and slippage, not a broker fee/tax calculation."
+    )
+    st.caption("Controls: maximum 3 simultaneous positions, maximum 3% combined open stop-risk, one open trade per stock, and cash-only notional sizing.")
+
+    trades = st.session_state["paper_trades"]
+    summary = paper_trading_summary(trades, virtual_capital)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Closed trades", summary["closed_trades"])
+    m2.metric("Open trades", summary["open_trades"])
+    m3.metric("Realised net P&L", f"₹{summary['net_pnl']:,.2f}")
+    m4.metric("Win rate", "—" if summary["win_rate_pct"] is None else f"{summary['win_rate_pct']:.1f}%")
+
+    st.markdown("#### Record a paper setup")
+    watchlist = ["RELIANCE", "HDFCBANK", "ICICIBANK", "ADANIENT", "ADANIPORTS"]
+    c1, c2, c3 = st.columns(3)
+    paper_symbol = c1.selectbox("Stock", watchlist, key="paper_symbol")
+    paper_timeframe = c2.selectbox("Timeframe", ["5m", "15m"], key="paper_timeframe")
+    paper_side = c3.selectbox("Direction", ["LONG", "SHORT"], key="paper_side")
+    p1, p2, p3 = st.columns(3)
+    entry_price = p1.number_input("Observed entry price (₹)", min_value=0.01, value=100.0, step=0.05, key="paper_entry")
+    stop_price = p2.number_input("Stop-loss price (₹)", min_value=0.01, value=99.0, step=0.05, key="paper_stop")
+    target_price = p3.number_input("Target price (₹)", min_value=0.01, value=102.0, step=0.05, key="paper_target")
+    try:
+        suggested_qty = suggest_quantity(
+            virtual_capital, risk_pct, entry_price, stop_price
+        )
+        risk_rupees = abs(entry_price - stop_price) * suggested_qty
+        reward_rupees = abs(target_price - entry_price) * suggested_qty
+        st.info(
+            f"Suggested quantity: {suggested_qty} shares · "
+            f"Planned stop-risk: ₹{risk_rupees:,.2f} · "
+            f"Target reward before costs: ₹{reward_rupees:,.2f} · "
+            f"Reward/risk: {reward_rupees / risk_rupees:.2f}R"
+        )
+        sizing_ok = (
+            (paper_side == "LONG" and stop_price < entry_price < target_price)
+            or (paper_side == "SHORT" and target_price < entry_price < stop_price)
+        )
+        if not sizing_ok:
+            st.error("Price levels do not match the selected direction. Correct entry, stop and target.")
+    except ValueError as exc:
+        suggested_qty = 0
+        st.error(f"Position sizing unavailable: {exc}")
+        sizing_ok = False
+    setup_notes = st.text_input(
+        "Setup reason / confirmation (required)",
+        placeholder="Example: 15m uptrend, 5m pullback, volume confirmation",
+        key="paper_setup_notes"
+    )
+    if st.button("Open paper trade", type="primary", disabled=(suggested_qty < 1 or not sizing_ok or not setup_notes.strip()), use_container_width=True):
+        try:
+            new_trade = open_paper_trade(
+                st.session_state["paper_trades"],
+                symbol=paper_symbol,
+                timeframe=paper_timeframe,
+                side=paper_side,
+                entry_price=entry_price,
+                stop_price=stop_price,
+                target_price=target_price,
+                quantity=suggested_qty,
+                capital=virtual_capital,
+                max_open_trades=3,
+                max_total_open_risk_pct=3.0,
+                estimated_cost_bps=friction_bps,
+                notes=setup_notes,
+            )
+            st.session_state["paper_trades"].append(new_trade)
+            st.success(f"Paper trade {new_trade['trade_id']} opened. No broker order was sent.")
+            st.rerun()
+        except ValueError as exc:
+            st.error(str(exc))
+
+    open_positions = [t for t in st.session_state["paper_trades"] if t.get("status") == "OPEN"]
+    if open_positions:
+        st.markdown("#### Close a paper position")
+        trade_labels = {
+            f"{t['trade_id']} · {t['symbol']} · {t['side']} · {t['quantity']} shares": t["trade_id"]
+            for t in open_positions
+        }
+        selected_trade_label = st.selectbox("Open position", list(trade_labels), key="paper_close_trade")
+        selected_trade_id = trade_labels[selected_trade_label]
+        exit_price = st.number_input("Observed exit price (₹)", min_value=0.01, value=100.0, step=0.05, key="paper_exit")
+        if st.button("Close selected paper trade", use_container_width=True):
+            try:
+                for index, trade in enumerate(st.session_state["paper_trades"]):
+                    if trade["trade_id"] == selected_trade_id:
+                        st.session_state["paper_trades"][index] = close_paper_trade(trade, exit_price)
+                        break
+                st.success("Paper position closed and simulated P&L recorded.")
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+    st.markdown("#### Paper trade ledger")
+    ledger = trades_frame(st.session_state["paper_trades"])
+    if ledger.empty:
+        st.info("No paper trades recorded yet. Record a setup above to begin.")
+    else:
+        st.dataframe(ledger, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download paper-trading ledger (CSV)",
+            data=ledger.to_csv(index=False).encode("utf-8"),
+            file_name="chart_reader_paper_trading_ledger.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        st.caption(
+            "The ledger is held in this Streamlit session. Download it regularly as a backup; "
+            "a server restart or new session may clear session data. Re-entry of old trades is not automated yet."
+        )
+        s1, s2, s3 = st.columns(3)
+        s1.metric("Profit factor", "—" if summary["profit_factor"] is None else ("∞" if summary["profit_factor"] == float("inf") else f"{summary['profit_factor']:.2f}"))
+        s2.metric("Average R", "—" if summary["average_r"] is None else f"{summary['average_r']:.2f}R")
+        s3.metric("Max realised drawdown", f"{summary['max_drawdown_pct']:.2f}%")
+
+    st.info(
+        "Paper-trading protocol: log the setup before the outcome is known; use the observed market price; "
+        "never move the stop farther away; close or update the journal only after the simulated exit occurs. "
+        "This first release is a manual journal, not an automated live execution simulator."
+    )
+
+
 with library_tab:
     st.markdown("### Candle & pattern behaviour research registry")
     registry_path = Path(__file__).parent / "data" / "pattern_registry.json"
