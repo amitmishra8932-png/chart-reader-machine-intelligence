@@ -147,7 +147,7 @@ def _decode_scrip_master_response(content: bytes) -> str:
 
 def parse_scrip_master(csv_text: str) -> pd.DataFrame:
     try:
-        frame = pd.read_csv(StringIO(csv_text), sep=None, engine="python")
+        frame = pd.read_csv(StringIO(csv_text))
     except Exception as exc:
         raise RuntimeError("Unable to parse 5paisa NSE equity scrip master as CSV.") from exc
     frame.columns = [str(col).strip().lstrip("\ufeff") for col in frame.columns]
