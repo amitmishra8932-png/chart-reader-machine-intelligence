@@ -458,7 +458,7 @@ with paper_tab:
         placeholder="Example: 15m uptrend, 5m pullback, volume confirmation",
         key="paper_setup_notes"
     )
-    confirm_open = st.checkbox("I confirm these are observed prices and this is a simulated trade.", key="paper_confirm_open")
+    confirm_open = st.checkbox("I confirm these are observed prices and this is a simulated trade.", key=f"paper_confirm_open_{len(st.session_state['paper_trades'])}")
     if st.button("Open paper trade", type="primary", disabled=(suggested_qty < 1 or not sizing_ok or not setup_notes.strip() or not confirm_open), use_container_width=True):
         try:
             new_trade = open_paper_trade(
