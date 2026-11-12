@@ -88,10 +88,10 @@ class FivePaisaAdapterTests(unittest.TestCase):
         response = Mock()
         response.ok = True
         response.content = (
-            b"Exch,ExchType,ScripCode,ScripData\\n"
-            b"N,C,1333,HDFCBANK_EQ\\n"
-            b"B,C,9999,HDFCBANK_EQ\\n"
-            b"N,D,8888,HDFCBANK_FUT\\n"
+            b"Exch,ExchType,ScripCode,ScripData\n"
+            b"N,C,1333,HDFCBANK_EQ\n"
+            b"B,C,9999,HDFCBANK_EQ\n"
+            b"N,D,8888,HDFCBANK_FUT\n"
         )
         response.headers = {"Content-Type": "text/csv"}
         mock_get.return_value = response
