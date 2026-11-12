@@ -187,6 +187,7 @@ def audit_nse_session_integrity(
             outside_count += 1
             anomaly_indices.add(index)
 
+    closed_day_count = sum(value == "closed_day" for value in classifications.values())
     return {
         "rows_checked": int(len(frame)),
         "invalid_timestamps": int(timestamps.isna().sum()),
@@ -204,11 +205,7 @@ def audit_nse_session_integrity(
         "session_classifications": classifications,
         "warnings": (
             ["Weekend/holiday candles outside a configured special session were found."]
-            if any(
-                (timestamps.loc[index].weekday() >= 5 or timestamps.loc[index].date() in holiday_set)
-                and classifications.get(index) == "closed_day"
-                for index in classifications
-            ) else []
+            if closed_day_count else []
         ) + (
             ["Some candles fall in the closing auction/transition window; exclude them from regular intraday signal calculations."]
             if auction_count else []
