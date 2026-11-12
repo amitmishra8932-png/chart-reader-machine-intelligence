@@ -30,16 +30,22 @@ class FivePaisaAdapterTests(unittest.TestCase):
         response.ok = True
         response.json.return_value = {
             "status": "success",
-            "data": {"candles": [["2026-11-10T09:15:00", 100, 105, 99, 103, 1200]]},
+            "data": {"candles": [
+                ["2026-11-10T09:15:00", 100, 105, 99, 103, 1200],
+                ["2026-11-12T15:15:00", 103, 106, 102, 105, 1500],
+                ["2026-11-13T09:15:00", 105, 107, 104, 106, 1600],
+            ]},
         }
         mock_get.return_value = response
         frame = fetch_historical_candles(
             "test-access-token", 2885, "5m", "2026-11-10", "2026-11-12",
             client_code="TESTCLIENT",
         )
-        self.assertEqual(len(frame), 1)
+        self.assertEqual(len(frame), 2)
+        self.assertEqual(frame["timestamp"].max(), pd.Timestamp("2026-11-12 15:15:00"))
         args, kwargs = mock_get.call_args
         self.assertIn("/V2/historical/N/C/2885/5m", args[0])
+        self.assertEqual(kwargs["params"], {"from": "2026-11-10", "end": "2026-11-13"})
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-access-token")
 
     def test_historical_candle_payload_normalizes_columns(self):
