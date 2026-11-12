@@ -59,6 +59,7 @@ def open_paper_trade(
     capital: float,
     max_open_trades: int = 3,
     max_total_open_risk_pct: float = 3.0,
+    max_total_exposure_pct: float = 100.0,
     estimated_cost_bps: float = 10.0,
     notes: str = "",
     opened_at: str | None = None,
@@ -103,11 +104,18 @@ def open_paper_trade(
     )
     if existing_risk + risk_amount > capital * max_total_open_risk_pct / 100.0 + 1e-9:
         raise ValueError("This trade would exceed the portfolio's total open-risk limit.")
+    existing_exposure = sum(float(t["entry_price"]) * int(t["quantity"]) for t in open_trades)
+    if existing_exposure + entry * qty > capital * max_total_exposure_pct / 100.0 + 1e-9:
+        raise ValueError("This trade would exceed the portfolio's total cash-exposure limit.")
     if any(t.get("status") == "OPEN" and t.get("symbol") == symbol for t in open_trades):
         raise ValueError(f"{symbol} already has an open paper trade.")
     now = opened_at or datetime.now(timezone.utc).isoformat()
+    existing_ids = {str(t.get("trade_id")) for t in current}
+    next_number = len(current) + 1
+    while f"PT-{next_number:05d}" in existing_ids:
+        next_number += 1
     return {
-        "trade_id": trade_id or f"PT-{len(current) + 1:05d}",
+        "trade_id": trade_id or f"PT-{next_number:05d}",
         "opened_at": now,
         "closed_at": "",
         "symbol": symbol,
