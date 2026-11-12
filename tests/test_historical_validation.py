@@ -138,3 +138,33 @@ class NSESessionIntegrityTests(unittest.TestCase):
         report = audit_nse_session_integrity(candles(["2026-11-12 09:17"]), "5m")
         self.assertEqual(report["misaligned_timestamps"], 1)
         self.assertEqual(report["session_anomaly_rows"], 1)
+
+    def test_cas_2_schedule_applies_from_7_december_2026(self):
+        frame = candles(["2026-12-04 15:10", "2026-12-04 15:15", "2026-12-04 15:30",
+                         "2026-12-07 15:25", "2026-12-07 15:30", "2026-12-07 15:35",
+                         "2026-12-07 15:40", "2026-12-07 15:45", "2026-12-07 15:50"])
+        report = audit_nse_session_integrity(frame, "5m", cas_eligible=True)
+        labels = report["session_classifications"]
+        self.assertEqual(labels[0], "regular")
+        self.assertEqual(labels[1], "closing_auction_session")
+        self.assertEqual(labels[2], "closing_transition")
+        self.assertEqual(labels[3], "regular")
+        self.assertEqual(labels[4], "closing_auction_session")
+        self.assertEqual(labels[5], "closing_auction_session")
+        self.assertEqual(labels[6], "closing_transition")
+        self.assertEqual(labels[7], "closing_transition")
+        self.assertEqual(labels[8], "closing_session")
+        self.assertEqual(report["closing_auction_session_timestamps"], 3)
+        self.assertEqual(report["closing_transition_timestamps"], 3)
+
+    def test_non_cas_schedule_remains_continuous_until_1530_after_cas2(self):
+        frame = candles(["2026-12-07 15:25", "2026-12-07 15:30",
+                         "2026-12-07 15:35", "2026-12-07 15:45", "2026-12-07 15:50"])
+        report = audit_nse_session_integrity(frame, "5m", cas_eligible=False)
+        labels = report["session_classifications"]
+        self.assertEqual(labels[0], "regular")
+        self.assertEqual(labels[1], "closing_transition")
+        self.assertEqual(labels[2], "closing_transition")
+        self.assertEqual(labels[3], "closing_transition")
+        self.assertEqual(labels[4], "closing_session")
+        self.assertEqual(report["closing_auction_session_timestamps"], 0)
