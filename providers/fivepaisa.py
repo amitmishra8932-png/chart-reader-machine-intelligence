@@ -122,12 +122,12 @@ def _decode_scrip_master_response(content: bytes) -> str:
     """Decode plain CSV and common compressed CSV responses from the provider."""
     if not content:
         raise RuntimeError("5paisa scrip master response was empty.")
-    if content.startswith(b"\\x1f\\x8b"):
+    if content.startswith(b"\x1f\x8b"):
         try:
             content = gzip.decompress(content)
         except OSError as exc:
             raise RuntimeError("5paisa scrip master returned invalid gzip data.") from exc
-    elif content.startswith(b"PK\\x03\\x04"):
+    elif content.startswith(b"PK\x03\x04"):
         try:
             with zipfile.ZipFile(BytesIO(content)) as archive:
                 candidates = [name for name in archive.namelist() if name.lower().endswith(".csv")]
@@ -150,7 +150,7 @@ def parse_scrip_master(csv_text: str) -> pd.DataFrame:
         frame = pd.read_csv(StringIO(csv_text), sep=None, engine="python")
     except Exception as exc:
         raise RuntimeError("Unable to parse 5paisa NSE equity scrip master as CSV.") from exc
-    frame.columns = [str(col).strip().lstrip("\\ufeff") for col in frame.columns]
+    frame.columns = [str(col).strip().lstrip("\ufeff") for col in frame.columns]
     required = {"ScripCode", "ScripData"}
     if not required.issubset(frame.columns):
         found = ", ".join(frame.columns.astype(str)[:12])
@@ -185,7 +185,7 @@ def fetch_scrip_master() -> pd.DataFrame:
         ) from exc
     if not response.ok:
         content_type = response.headers.get("Content-Type", "unknown")
-        detail = (getattr(response, "text", "") or "").strip().replace("\\n", " ")[:240]
+        detail = (getattr(response, "text", "") or "").strip().replace("\n", " ")[:240]
         raise RuntimeError(
             f"5paisa scrip-master service returned HTTP {response.status_code} "
             f"(content type: {content_type}). {detail or 'No response details provided.'}"
@@ -253,7 +253,7 @@ def fetch_historical_candles(
         )
         if not response.ok:
             # Keep provider diagnostics useful without ever echoing request headers.
-            detail = (response.text or "").strip().replace("\\n", " ")[:400]
+            detail = (response.text or "").strip().replace("\n", " ")[:400]
             raise RuntimeError(
                 f"5paisa historical API returned HTTP {response.status_code} "
                 f"for {interval}. {detail or 'No response details provided.'}"
