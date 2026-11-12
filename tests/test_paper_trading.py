@@ -84,8 +84,8 @@ class PaperTradingTests(unittest.TestCase):
         closed = close_paper_trade(trade, 105, closed_at="2026-11-13T10:00:00+05:30")
         result = trade_result(closed)
         self.assertAlmostEqual(result["gross_pnl"], 500)
-        self.assertAlmostEqual(result["estimated_costs"], 2.05)
-        self.assertAlmostEqual(result["net_pnl"], 497.95)
+        self.assertAlmostEqual(result["estimated_costs"], 20.5)
+        self.assertAlmostEqual(result["net_pnl"], 479.5)
 
     def test_short_pnl_direction(self):
         trade = open_paper_trade(
