@@ -110,11 +110,14 @@ def audit_nse_session_integrity(
 ) -> dict:
     """Classify NSE cash timestamps by session without modifying source rows.
 
-    For the CAS schedule effective in November 2026, eligible securities have
-    continuous trading 09:15-15:15, CAS 15:15-15:35, transition 15:35-15:50,
-    and post-close 15:50-16:00. Non-CAS securities trade continuously until
-    15:30, then transition until 15:50 and post-close until 16:00.
-    Eligibility is supplied by the caller; this function does not guess it.
+    Session rules are selected by calendar date. For CAS-eligible securities,
+    the November 2026 schedule is continuous trading 09:15-15:15, CAS
+    15:15-15:35, transition 15:35-15:50, and post-close 15:50-16:00.
+    From 2026-12-07, continuous trading runs until 15:30, CAS 15:30-15:40,
+    transition 15:40-15:50, and post-close 15:50-16:00. Non-CAS securities
+    trade continuously until 15:30, then transition until 15:50 and post-close
+    until 16:00. Eligibility is supplied by the caller; this function does
+    not guess.
 
     A dated special session overrides normal weekday/weekend rules. Timestamps
     are assumed to be candle starts; provider timestamp semantics are unverified.
