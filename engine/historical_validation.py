@@ -91,17 +91,30 @@ def audit_historical_ohlcv(frame: pd.DataFrame, interval: str = "5m") -> dict:
     }
 
 
+# Curated NSE special cash-market sessions. Keep this list explicit and review it
+# against official NSE circulars when extending the supported calendar.
+DEFAULT_SPECIAL_SESSIONS = {
+    "2026-11-08": {
+        "start": "14:20",
+        "end": "15:40",
+        "label": "Diwali Muhurat Trading",
+    },
+}
+
 def audit_nse_session_integrity(
     frame: pd.DataFrame,
     interval: str = "5m",
     holidays: set | None = None,
+    special_sessions: dict | None = None,
 ) -> dict:
-    """Flag NSE cash-session timestamp anomalies without changing source rows.
+    """Classify NSE cash timestamps by session without modifying source rows.
 
-    Assumes candle timestamps represent bar start times: 09:15 is the first
-    regular-session candle and the last permitted start is 15:25 for 5m or
-    15:15 for 15m. Holiday dates may be supplied by the caller; no static
-    holiday calendar is embedded because exchange holidays vary by year.
+    Candle timestamps are treated as bar-start timestamps. Regular cash trading
+    is 09:15-15:30. The closing auction/transition window is 15:20-15:50 and
+    the closing session is 15:50-16:00. A dated special session may override
+    the normal weekend/holiday closure and supplies its own continuous-trading
+    start/end times. This is a session classifier, not proof that provider
+    timestamps are bar starts; verify provider semantics before strategy use.
     """
     interval_minutes = {"5m": 5, "15m": 15}
     if interval not in interval_minutes:
@@ -113,41 +126,99 @@ def audit_nse_session_integrity(
 
     timestamps = pd.to_datetime(frame["timestamp"], errors="coerce")
     valid = timestamps.dropna()
-    holiday_set = set(holidays or set())
-    weekend_mask = valid.dt.weekday >= 5
-    holiday_mask = valid.dt.date.isin(holiday_set)
-    minutes = valid.dt.hour * 60 + valid.dt.minute
-    open_minutes = 9 * 60 + 15
-    close_minutes = 15 * 60 + 30
+    holiday_set = {pd.Timestamp(day).date() for day in (holidays or set())}
+    sessions = DEFAULT_SPECIAL_SESSIONS if special_sessions is None else special_sessions
     interval_size = interval_minutes[interval]
-    outside_session = (minutes < open_minutes) | (minutes >= close_minutes)
-    misaligned = ((minutes - open_minutes) % interval_size) != 0
-    # A start-time candle must finish by the regular 15:30 close.
-    too_late_start = minutes + interval_size > close_minutes
+    open_minutes = 9 * 60 + 15
+    regular_close = 15 * 60 + 30
+    auction_start = 15 * 60 + 20
+    closing_session_start = 15 * 60 + 50
+    exchange_close = 16 * 60
+
+    weekend_count = holiday_count = special_count = 0
+    auction_count = closing_count = outside_count = misaligned_count = 0
+    anomaly_indices = set()
+    classifications = {}
+
+    for index, timestamp in valid.items():
+        day = timestamp.date()
+        minute = timestamp.hour * 60 + timestamp.minute
+        day_key = day.isoformat()
+        is_weekend = timestamp.weekday() >= 5
+        is_holiday = day in holiday_set
+        weekend_count += int(is_weekend)
+        holiday_count += int(is_holiday)
+
+        special = sessions.get(day_key)
+        if special:
+            start_h, start_m = map(int, special["start"].split(":"))
+            end_h, end_m = map(int, special["end"].split(":"))
+            special_start = start_h * 60 + start_m
+            special_end = end_h * 60 + end_m
+            if special_start <= minute < special_end:
+                classifications[index] = "special_continuous"
+                special_count += 1
+                if (minute - special_start) % interval_size:
+                    misaligned_count += 1
+                    anomaly_indices.add(index)
+                continue
+
+        if is_weekend or is_holiday:
+            classifications[index] = "closed_day"
+            anomaly_indices.add(index)
+            continue
+
+        if auction_start <= minute < closing_session_start:
+            # NSE closing-auction order entry begins at 15:20; transition
+            # continues through 15:50. Classify it separately from regular bars.
+            classifications[index] = "closing_auction_transition"
+            auction_count += 1
+        elif open_minutes <= minute < auction_start:
+            classifications[index] = "regular"
+            if (minute - open_minutes) % interval_size:
+                misaligned_count += 1
+                anomaly_indices.add(index)
+        elif closing_session_start <= minute < exchange_close:
+            classifications[index] = "closing_session"
+            closing_count += 1
+            if (minute - closing_session_start) % interval_size:
+                misaligned_count += 1
+                anomaly_indices.add(index)
+        else:
+            classifications[index] = "outside_exchange_sessions"
+            outside_count += 1
+            anomaly_indices.add(index)
+
+    closed_day_count = sum(value == "closed_day" for value in classifications.values())
     return {
         "rows_checked": int(len(frame)),
         "invalid_timestamps": int(timestamps.isna().sum()),
-        "weekend_timestamps": int(weekend_mask.sum()),
-        "known_holiday_timestamps": int(holiday_mask.sum()),
-        "outside_session_timestamps": int(outside_session.sum()),
-        "misaligned_timestamps": int(misaligned.sum()),
-        "too_late_candle_starts": int(too_late_start.sum()),
-        "session_anomaly_rows": int((weekend_mask | holiday_mask | outside_session | misaligned | too_late_start).sum()),
+        "weekend_timestamps": weekend_count,
+        "known_holiday_timestamps": holiday_count,
+        "special_session_timestamps": special_count,
+        "closing_auction_transition_timestamps": auction_count,
+        "closing_session_timestamps": closing_count,
+        "outside_session_timestamps": outside_count,
+        "misaligned_timestamps": misaligned_count,
+        "session_anomaly_rows": len(anomaly_indices),
+        "non_regular_session_rows": auction_count + closing_count,
+        "regular_session_rows": sum(value == "regular" for value in classifications.values()),
         "timestamp_convention": "Assumed candle start time; confirm with provider documentation.",
+        "session_classifications": classifications,
         "warnings": (
-            ["Weekend-dated candles found; regular NSE cash session is closed on weekends."]
-            if weekend_mask.any() else []
+            ["Weekend/holiday candles outside a configured special session were found."]
+            if closed_day_count else []
         ) + (
-            ["Candles fall on supplied NSE holiday dates."]
-            if holiday_mask.any() else []
+            ["Some candles fall in the closing auction/transition window; exclude them from regular intraday signal calculations."]
+            if auction_count else []
         ) + (
-            ["Candles fall outside the regular NSE cash session (09:15–15:30)."]
-            if outside_session.any() else []
+            ["Some candles fall in the 15:50-16:00 closing session; treat them separately from continuous intraday trading."]
+            if closing_count else []
         ) + (
-            ["Candle timestamps do not align to the selected interval from 09:15."]
-            if misaligned.any() else []
+            ["Some candles fall outside recognised NSE equity sessions."]
+            if outside_count else []
         ) + (
-            ["Candle start time would extend beyond the 15:30 regular-session close."]
-            if too_late_start.any() else []
+            ["Some candle timestamps do not align to the relevant session start."]
+            if misaligned_count else []
         ),
     }

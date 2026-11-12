@@ -321,12 +321,16 @@ with historical_tab:
                     "Negative volume rows": audit["negative_volume_rows"],
                     "Possible missing candles": audit["estimated_missing_intraday_bars"],
                     "Weekend candles": session_audit["weekend_timestamps"],
-                    "Outside-session candles": session_audit["outside_session_timestamps"],
+                    "Special-session candles": session_audit["special_session_timestamps"],
+                    "Closing auction/transition": session_audit["closing_auction_transition_timestamps"],
+                    "Closing-session candles": session_audit["closing_session_timestamps"],
+                    "Outside exchange sessions": session_audit["outside_session_timestamps"],
                     "Misaligned timestamps": session_audit["misaligned_timestamps"],
+                    "Non-regular-session rows": session_audit["non_regular_session_rows"],
                     "Session anomaly rows": session_audit["session_anomaly_rows"],
                     "Quality status": (
                         "Session review required" if session_audit["session_anomaly_rows"]
-                        else audit["quality_status"]
+                        else ("Non-regular session data" if session_audit["non_regular_session_rows"] else audit["quality_status"])
                     ),
                     "Warnings": " | ".join(audit["warnings"] + session_audit["warnings"]),
                 })
@@ -342,7 +346,7 @@ with historical_tab:
         st.dataframe(audit_frame, use_container_width=True, hide_index=True)
         st.caption(
             "Missing-candle counts are estimates within the same date. "
-            "Check exchange sessions and corporate-action adjustments before interpreting anomalies."
+            "Recognised sessions include the configured 8-Nov-2026 Muhurat continuous session, NSE closing auction/transition (15:20–15:50), and closing session (15:50–16:00). These non-regular records should be excluded from continuous intraday signal calculations. The audit assumes candle-start timestamps; verify 5paisa timestamp semantics before strategy use. Holiday calendars must be updated from official NSE circulars."
         )
         st.download_button(
             "Download data quality audit (CSV)",
