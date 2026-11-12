@@ -87,6 +87,8 @@ def open_paper_trade(
         raise ValueError("Prices, capital and quantity must be positive.")
     if cost_bps < 0:
         raise ValueError("Estimated costs cannot be negative.")
+    if not 0 < max_total_open_risk_pct <= 100 or not 0 < max_total_exposure_pct <= 100:
+        raise ValueError("Portfolio risk and exposure limits must be between 0 and 100%.")
     if side == "LONG" and not stop < entry < target:
         raise ValueError("For a LONG, stop must be below entry and target above entry.")
     if side == "SHORT" and not target < entry < stop:
