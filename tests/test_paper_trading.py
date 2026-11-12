@@ -1,9 +1,10 @@
 """Tests for manual paper-trading risk controls and ledger maths."""
 import unittest
+from io import BytesIO
 
 from engine.paper_trading import (
-    close_paper_trade, open_paper_trade, paper_trading_summary,
-    suggest_quantity, trade_result,
+    close_paper_trade, load_trade_ledger, open_paper_trade, paper_trading_summary,
+    suggest_quantity, trade_result, trades_frame,
 )
 
 
@@ -81,6 +82,23 @@ class PaperTradingTests(unittest.TestCase):
         )
         closed = close_paper_trade(trade, 95)
         self.assertAlmostEqual(trade_result(closed)["net_pnl"], 50)
+
+
+    def test_exported_ledger_can_be_restored(self):
+        trade = open_paper_trade(
+            [], symbol="RELIANCE", timeframe="5m", side="LONG",
+            entry_price=100, stop_price=95, target_price=110,
+            quantity=100, capital=100000, opened_at="2026-11-13T09:20:00+05:30",
+        )
+        exported = trades_frame([trade]).to_csv(index=False).encode("utf-8")
+        restored = load_trade_ledger(BytesIO(exported))
+        self.assertEqual(len(restored), 1)
+        self.assertEqual(restored[0]["trade_id"], trade["trade_id"])
+        self.assertEqual(restored[0]["status"], "OPEN")
+
+    def test_restore_rejects_invalid_ledger(self):
+        with self.assertRaisesRegex(ValueError, "missing required columns"):
+            load_trade_ledger(BytesIO(b"symbol,close\\nRELIANCE,100\\n"))
 
     def test_summary_uses_closed_trades_only(self):
         trade = open_paper_trade(
