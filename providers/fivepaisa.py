@@ -176,7 +176,7 @@ def fetch_historical_candles(
     access_token: str, scrip_code: int, interval: str, start_date, end_date,
     client_code: str = "",
 ) -> pd.DataFrame:
-    """Fetch historical candles using the documented GET endpoint.
+    """Fetch historical candles using the Xstream historical-candles endpoint.
 
     The x-clientcode header is required by the Xstream historical-candle API.
     Never include credentials or tokens in raised error messages.
@@ -198,14 +198,16 @@ def fetch_historical_candles(
         raise ValueError("5paisa intraday historical requests are limited to six months per request.")
     url = HISTORICAL_URL.format(scrip_code=int(scrip_code), interval=interval)
     try:
-        response = requests.get(
+        response = requests.post(
             url,
             params={"from": start.isoformat(), "end": end.isoformat()},
             headers={
                 "Authorization": "Bearer " + access_token,
                 "x-clientcode": str(client_code),
+                "Content-Type": "application/json",
                 "Accept": "application/json",
             },
+            data="",
             timeout=30,
         )
         if not response.ok:
