@@ -67,3 +67,34 @@ class HistoricalValidationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NSESessionIntegrityTests(unittest.TestCase):
+    def test_regular_session_aligned_candles_pass(self):
+        from engine.historical_validation import audit_nse_session_integrity
+        frame = candles(["2026-11-09 09:15", "2026-11-09 09:30", "2026-11-09 15:15"])
+        report = audit_nse_session_integrity(frame, "15m")
+        self.assertEqual(report["session_anomaly_rows"], 0)
+
+    def test_weekend_timestamp_is_flagged(self):
+        from engine.historical_validation import audit_nse_session_integrity
+        frame = candles(["2026-11-08 10:00"])
+        report = audit_nse_session_integrity(frame, "15m")
+        self.assertEqual(report["weekend_timestamps"], 1)
+        self.assertEqual(report["session_anomaly_rows"], 1)
+
+    def test_out_of_session_and_misaligned_timestamps_are_flagged(self):
+        from engine.historical_validation import audit_nse_session_integrity
+        frame = candles(["2026-11-09 08:55", "2026-11-09 15:50", "2026-11-09 09:20"])
+        report = audit_nse_session_integrity(frame, "15m")
+        self.assertEqual(report["outside_session_timestamps"], 2)
+        self.assertEqual(report["misaligned_timestamps"], 1)
+        self.assertEqual(report["session_anomaly_rows"], 3)
+
+    def test_supplied_holiday_dates_are_flagged(self):
+        from datetime import date
+        from engine.historical_validation import audit_nse_session_integrity
+        frame = candles(["2026-11-09 09:15"])
+        report = audit_nse_session_integrity(frame, "15m", holidays={date(2026, 11, 9)})
+        self.assertEqual(report["known_holiday_timestamps"], 1)
+        self.assertEqual(report["session_anomaly_rows"], 1)
