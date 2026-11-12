@@ -46,7 +46,7 @@ def add_market_structure(frame: pd.DataFrame, pivot_window: int = 3) -> pd.DataF
 
     for i in range(n):
         pivot_index = i - pivot_window
-        if pivot_index >= pivot_window and i + pivot_window - pivot_index == pivot_window:
+        if pivot_index >= pivot_window:
             left = pivot_index - pivot_window
             right = i + 1
             candidate_high = highs[pivot_index]
