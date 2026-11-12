@@ -220,4 +220,3 @@ def audit_nse_session_integrity(
             if misaligned_count else []
         ),
     }
-}
