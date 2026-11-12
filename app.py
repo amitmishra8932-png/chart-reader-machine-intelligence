@@ -1,4 +1,6 @@
 from datetime import datetime
+import json
+from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -35,8 +37,8 @@ with st.sidebar:
     st.caption("Uploaded data stays in this app session; it is not written to GitHub.")
 
 st.subheader("Workspace")
-overview, chart_tab, intelligence, research = st.tabs(
-    ["Overview", "Chart analysis", "Intelligence", "Research & validation"]
+overview, chart_tab, intelligence, library_tab, research = st.tabs(
+    ["Overview", "Chart analysis", "Intelligence", "Pattern library", "Research & validation"]
 )
 
 data = None
@@ -124,6 +126,42 @@ with intelligence:
         else:
             st.dataframe(patterns, use_container_width=True, hide_index=True)
         st.caption("Patterns are descriptive candle shapes, not standalone buy/sell signals.")
+
+
+with library_tab:
+    st.markdown("### Candle & pattern behaviour research registry")
+    registry_path = Path(__file__).parent / "data" / "pattern_registry.json"
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        entries = registry["patterns"]
+        families = sorted({item["family"] for item in entries})
+        selected_family = st.selectbox("Pattern family", ["All"] + families)
+        visible = entries if selected_family == "All" else [
+            item for item in entries if item["family"] == selected_family
+        ]
+        st.caption(
+            f"{len(visible)} of {len(entries)} catalogue entries · "
+            f"{sum(item['detector_status'] == 'implemented' for item in visible)} "
+            "currently have detector code"
+        )
+        labels = {f"{item['name']} ({item['id']})": item for item in visible}
+        selected_label = st.selectbox("Inspect pattern", list(labels))
+        item = labels[selected_label]
+        st.markdown(f"**Conventional classification:** {item['bias']}")
+        st.markdown(f"**Definition:** {item['definition']}")
+        st.markdown(f"**Behaviour hypothesis:** {item['hypothesis']}")
+        st.markdown(f"**Context and confirmation:** {item['context']}")
+        st.markdown(f"**Failure / invalidation:** {item['failure']}")
+        st.info("Research caveat: " + item["caveat"])
+        st.caption(
+            "Detector status: " + item["detector_status"]
+            + " · Empirical performance: " + item["empirical_performance"]
+        )
+        st.markdown("#### Research references")
+        for ref in registry["references"]:
+            st.markdown(f"- [{ref['author']} — {ref['title']}]({ref['url']})")
+    except Exception as exc:
+        st.error(f"Could not load pattern registry: {exc}")
 
 with research:
     st.markdown("### Historical outcome research")
