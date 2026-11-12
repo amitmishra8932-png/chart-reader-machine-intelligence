@@ -473,6 +473,7 @@ with paper_tab:
                 capital=virtual_capital,
                 max_open_trades=3,
                 max_total_open_risk_pct=3.0,
+                max_total_exposure_pct=100.0,
                 estimated_cost_bps=friction_bps,
                 notes=setup_notes,
             )
@@ -535,7 +536,7 @@ with paper_tab:
         )
         st.caption(
             "The ledger is held in this Streamlit session. Download it regularly as a backup; "
-            "a server restart or new session may clear session data. Re-entry of old trades is not automated yet."
+            "a server restart or new session may clear session data. Use the restore control above to reload a saved CSV."
         )
         s1, s2, s3 = st.columns(3)
         s1.metric("Profit factor", "—" if summary["profit_factor"] is None else ("∞" if summary["profit_factor"] == float("inf") else f"{summary['profit_factor']:.2f}"))
