@@ -315,9 +315,14 @@ def fetch_historical_candles(
         raise ValueError("5paisa intraday historical requests are limited to six months per request.")
     url = HISTORICAL_URL.format(scrip_code=int(scrip_code), interval=interval)
     try:
+        # The provider documentation does not clearly state whether `end` is
+        # inclusive. Request one extra calendar day, then enforce the user's
+        # inclusive date range locally. This works with either provider
+        # interpretation and prevents next-day candles leaking into the export.
+        request_end = end + pd.Timedelta(days=1)
         response = requests.get(
             url,
-            params={"from": start.isoformat(), "end": end.isoformat()},
+            params={"from": start.isoformat(), "end": request_end.isoformat()},
             headers={
                 "Authorization": "Bearer " + access_token,
                 "Accept": "application/json",
@@ -340,4 +345,9 @@ def fetch_historical_candles(
             f"Could not reach the 5paisa historical API for scrip {scrip_code} ({interval}). "
             "Check Streamlit network access and retry."
         ) from exc
-    return parse_historical_candles(payload)
+    frame = parse_historical_candles(payload)
+    lower_bound = pd.Timestamp(start)
+    upper_bound = pd.Timestamp(end) + pd.Timedelta(days=1)
+    return frame.loc[
+        (frame["timestamp"] >= lower_bound) & (frame["timestamp"] < upper_bound)
+    ].reset_index(drop=True)
