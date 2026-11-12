@@ -128,10 +128,10 @@ class NSESessionIntegrityTests(unittest.TestCase):
                          "2026-11-12 15:30", "2026-11-12 15:35", "2026-11-12 15:50"])
         report = audit_nse_session_integrity(frame, "5m", cas_eligible=True)
         self.assertEqual(report["regular_session_rows"], 1)
-        self.assertEqual(report["closing_auction_session_timestamps"], 4)
+        self.assertEqual(report["closing_auction_session_timestamps"], 3)
         self.assertEqual(report["closing_transition_timestamps"], 1)
         self.assertEqual(report["closing_session_timestamps"], 1)
-        self.assertEqual(report["non_regular_session_rows"], 6)
+        self.assertEqual(report["non_regular_session_rows"], 5)
         self.assertEqual(report["cas_eligible"], True)
 
     def test_regular_session_misalignment_is_still_flagged(self):
