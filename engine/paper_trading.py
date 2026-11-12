@@ -163,6 +163,7 @@ def trade_result(trade: dict) -> dict:
 
 def paper_trading_summary(trades: Iterable[dict], starting_capital: float) -> dict:
     """Summarise closed paper trades; open positions are excluded from realised P&L."""
+    trades = list(trades)
     closed = [t for t in trades if t.get("status") == "CLOSED"]
     results = [trade_result(t) for t in closed]
     pnls = [r["net_pnl"] for r in results]
@@ -200,3 +201,62 @@ def trades_frame(trades: Iterable[dict]) -> pd.DataFrame:
             row.update({"gross_pnl": None, "estimated_costs": None, "net_pnl": None, "r_multiple": None})
         rows.append(row)
     return pd.DataFrame(rows, columns=TRADE_COLUMNS + ["gross_pnl", "estimated_costs", "net_pnl", "r_multiple"])
+
+
+def load_trade_ledger(uploaded_file) -> list[dict]:
+    """Validate and restore a previously exported CSV paper-trade ledger."""
+    try:
+        frame = pd.read_csv(uploaded_file)
+    except Exception as exc:
+        raise ValueError(f"Could not read paper ledger CSV: {exc}") from exc
+    missing = [column for column in TRADE_COLUMNS if column not in frame.columns]
+    if missing:
+        raise ValueError("Ledger is missing required columns: " + ", ".join(missing))
+    records = []
+    seen_ids = set()
+    for raw in frame[TRADE_COLUMNS].to_dict("records"):
+        row = {key: (None if pd.isna(value) else value) for key, value in raw.items()}
+        trade_id = str(row["trade_id"]).strip()
+        symbol = str(row["symbol"]).strip().upper()
+        side = str(row["side"]).upper()
+        timeframe = str(row["timeframe"]).lower()
+        status = str(row["status"]).upper()
+        if not trade_id or trade_id == "None" or trade_id in seen_ids:
+            raise ValueError("Ledger contains a blank or duplicate trade ID.")
+        if not symbol or symbol == "NONE" or side not in {"LONG", "SHORT"}:
+            raise ValueError("Ledger contains an invalid symbol or trade direction.")
+        if timeframe not in {"5m", "15m"} or status not in {"OPEN", "CLOSED"}:
+            raise ValueError("Ledger contains an invalid timeframe or status.")
+        try:
+            entry = float(row["entry_price"])
+            stop = float(row["stop_price"])
+            target = float(row["target_price"])
+            quantity = int(row["quantity"])
+            costs = float(row["estimated_cost_bps"] or 0)
+            exit_price = None if row["exit_price"] is None else float(row["exit_price"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Ledger contains invalid numeric trade fields.") from exc
+        if not all(math.isfinite(v) and v > 0 for v in (entry, stop, target)) or quantity <= 0 or costs < 0:
+            raise ValueError("Ledger contains non-positive prices/quantity or invalid costs.")
+        if side == "LONG" and not stop < entry < target:
+            raise ValueError("Ledger contains invalid LONG stop/target levels.")
+        if side == "SHORT" and not target < entry < stop:
+            raise ValueError("Ledger contains invalid SHORT stop/target levels.")
+        if status == "CLOSED" and (exit_price is None or not math.isfinite(exit_price) or exit_price <= 0):
+            raise ValueError("Closed ledger trades must contain a positive exit price.")
+        if status == "OPEN" and exit_price is not None:
+            raise ValueError("Open ledger trades must not contain an exit price.")
+        row.update({
+            "trade_id": trade_id, "symbol": symbol, "side": side,
+            "timeframe": timeframe, "status": status,
+            "entry_price": entry, "stop_price": stop, "target_price": target,
+            "quantity": quantity, "estimated_cost_bps": costs,
+            "exit_price": exit_price, "notes": "" if row["notes"] is None else str(row["notes"]),
+            "opened_at": "" if row["opened_at"] is None else str(row["opened_at"]),
+            "closed_at": "" if row["closed_at"] is None else str(row["closed_at"]),
+        })
+        records.append(row)
+        seen_ids.add(trade_id)
+    if sum(t["status"] == "OPEN" for t in records) > 3:
+        raise ValueError("Ledger has more than 3 open positions; review it before restoring.")
+    return records
