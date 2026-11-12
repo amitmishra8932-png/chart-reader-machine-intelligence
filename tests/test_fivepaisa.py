@@ -1,9 +1,10 @@
 import unittest
 import pandas as pd
+from unittest.mock import Mock, patch
 
 from providers.fivepaisa import (
     build_oauth_url, parse_historical_candles, parse_scrip_master,
-    resolve_scrip_code,
+    resolve_scrip_code, fetch_historical_candles,
 )
 
 
@@ -22,6 +23,25 @@ class FivePaisaAdapterTests(unittest.TestCase):
         )
         master = parse_scrip_master(csv_text)
         self.assertEqual(resolve_scrip_code(master, "ITC"), 2885)
+
+    @patch("providers.fivepaisa.requests.get")
+    def test_historical_fetch_uses_get_and_client_code_header(self, mock_get):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "status": "success",
+            "data": {"candles": [["2026-11-10T09:15:00", 100, 105, 99, 103, 1200]]},
+        }
+        mock_get.return_value = response
+        frame = fetch_historical_candles(
+            "test-access-token", 2885, "5m", "2026-11-10", "2026-11-12",
+            client_code="TESTCLIENT",
+        )
+        self.assertEqual(len(frame), 1)
+        args, kwargs = mock_get.call_args
+        self.assertIn("/V2/historical/N/C/2885/5m", args[0])
+        self.assertEqual(kwargs["headers"]["x-clientcode"], "TESTCLIENT")
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-access-token")
 
     def test_historical_candle_payload_normalizes_columns(self):
         payload = {
