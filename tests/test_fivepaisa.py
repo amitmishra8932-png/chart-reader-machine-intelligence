@@ -82,6 +82,27 @@ class FivePaisaAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "HTTP 503"):
             fetch_scrip_master()
 
+
+    @patch("providers.fivepaisa.requests.get")
+    def test_scrip_master_uses_official_all_segments_dump_and_filters_nse_cash(self, mock_get):
+        response = Mock()
+        response.ok = True
+        response.content = (
+            b"Exch,ExchType,ScripCode,ScripData\n"
+            b"N,C,1333,HDFCBANK_EQ\n"
+            b"B,C,9999,HDFCBANK_EQ\n"
+            b"N,D,8888,HDFCBANK_FUT\n"
+        )
+        response.headers = {"Content-Type": "text/csv"}
+        mock_get.return_value = response
+        from providers.fivepaisa import fetch_scrip_master, SCRIP_MASTER_URL
+        master = fetch_scrip_master()
+        self.assertTrue(SCRIP_MASTER_URL.endswith("/ScripMaster/segment/All"))
+        self.assertEqual(mock_get.call_args.args[0], SCRIP_MASTER_URL)
+        self.assertEqual(resolve_scrip_code(master, "HDFCBANK"), 1333)
+        self.assertEqual(len(master), 1)
+
+
     def test_scrip_master_rejects_html_response(self):
         from providers.fivepaisa import _decode_scrip_master_response
         with self.assertRaisesRegex(RuntimeError, "HTML instead of CSV"):
