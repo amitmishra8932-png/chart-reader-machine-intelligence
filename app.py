@@ -263,7 +263,8 @@ with historical_tab:
                             try:
                                 candles = fetch_historical_candles(
                                     st.session_state["fivepaisa_access_token"],
-                                    code, timeframe, start_date, end_date
+                                    code, timeframe, start_date, end_date,
+                                    client_code=st.session_state["fivepaisa_client_code"],
                                 )
                                 candles["symbol"] = stock
                                 candles["timeframe"] = timeframe
