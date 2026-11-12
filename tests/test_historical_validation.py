@@ -113,13 +113,26 @@ class NSESessionIntegrityTests(unittest.TestCase):
         self.assertEqual(report["session_anomaly_rows"], 1)
         self.assertEqual(report["special_session_timestamps"], 0)
 
-    def test_closing_auction_and_closing_session_are_classified_separately(self):
-        frame = candles(["2026-11-12 15:29", "2026-11-12 15:50", "2026-11-12 15:55"])
-        report = audit_nse_session_integrity(frame, "5m")
-        self.assertEqual(report["closing_auction_transition_timestamps"], 1)
-        self.assertEqual(report["closing_session_timestamps"], 2)
-        self.assertEqual(report["outside_session_timestamps"], 0)
+    def test_non_cas_security_keeps_continuous_session_until_1530(self):
+        frame = candles(["2026-11-12 15:15", "2026-11-12 15:25", "2026-11-12 15:29",
+                         "2026-11-12 15:30", "2026-11-12 15:45", "2026-11-12 15:50"])
+        report = audit_nse_session_integrity(frame, "5m", cas_eligible=False)
+        self.assertEqual(report["regular_session_rows"], 3)
+        self.assertEqual(report["closing_auction_session_timestamps"], 0)
+        self.assertEqual(report["closing_transition_timestamps"], 2)
+        self.assertEqual(report["closing_session_timestamps"], 1)
         self.assertEqual(report["non_regular_session_rows"], 3)
+
+    def test_cas_security_uses_1515_to_1535_auction_window(self):
+        frame = candles(["2026-11-12 15:10", "2026-11-12 15:15", "2026-11-12 15:25",
+                         "2026-11-12 15:30", "2026-11-12 15:35", "2026-11-12 15:50"])
+        report = audit_nse_session_integrity(frame, "5m", cas_eligible=True)
+        self.assertEqual(report["regular_session_rows"], 1)
+        self.assertEqual(report["closing_auction_session_timestamps"], 4)
+        self.assertEqual(report["closing_transition_timestamps"], 1)
+        self.assertEqual(report["closing_session_timestamps"], 1)
+        self.assertEqual(report["non_regular_session_rows"], 6)
+        self.assertEqual(report["cas_eligible"], True)
 
     def test_regular_session_misalignment_is_still_flagged(self):
         report = audit_nse_session_integrity(candles(["2026-11-12 09:17"]), "5m")
