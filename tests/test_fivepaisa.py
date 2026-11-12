@@ -76,6 +76,11 @@ class FivePaisaAdapterTests(unittest.TestCase):
         args, kwargs = mock_post.call_args
         self.assertIn("/V1/MarketFeed", args[0])
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-token")
+        self.assertEqual(kwargs["headers"]["5Paisa-API-Uid"], "ka7SFqAU6SC")
+        self.assertEqual(kwargs["json"]["head"]["requestCode"], "5PMF")
+        self.assertEqual(kwargs["json"]["body"]["COUNT"], "CLIENT1")
+        self.assertEqual(kwargs["json"]["body"]["ClientLoginType"], 0)
+        self.assertEqual(kwargs["json"]["body"]["RefreshRate"], "H")
         request_data = kwargs["json"]["body"]["MarketFeedData"]
         self.assertEqual(request_data[0]["ScripData"], "HDFCBANK_EQ")
         self.assertEqual(request_data[0]["Exch"], "N")
