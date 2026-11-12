@@ -1,0 +1,69 @@
+import unittest
+import pandas as pd
+
+from engine.historical_validation import audit_historical_ohlcv
+
+
+def candles(times, volume=None):
+    frame = pd.DataFrame({
+        "timestamp": times,
+        "open": [100.0] * len(times),
+        "high": [102.0] * len(times),
+        "low": [99.0] * len(times),
+        "close": [101.0] * len(times),
+    })
+    if volume is not None:
+        frame["volume"] = volume
+    return frame
+
+
+class HistoricalValidationTests(unittest.TestCase):
+    def test_clean_intraday_data_has_no_integrity_warnings(self):
+        frame = candles(pd.date_range("2026-01-05 09:15", periods=4, freq="5min"), [10, 11, 12, 13])
+        report = audit_historical_ohlcv(frame, "5m")
+        self.assertEqual(report["quality_status"], "No basic integrity issues detected")
+        self.assertEqual(report["estimated_missing_intraday_bars"], 0)
+        self.assertEqual(report["distinct_trading_dates"], 1)
+
+    def test_overnight_gap_is_not_counted_as_missing_intraday_bars(self):
+        times = list(pd.date_range("2026-01-05 15:25", periods=2, freq="5min"))
+        times += list(pd.date_range("2026-01-06 09:15", periods=2, freq="5min"))
+        report = audit_historical_ohlcv(candles(times), "5m")
+        self.assertEqual(report["estimated_missing_intraday_bars"], 0)
+
+    def test_same_session_gap_is_flagged(self):
+        times = ["2026-01-05 09:15", "2026-01-05 09:20", "2026-01-05 09:35"]
+        report = audit_historical_ohlcv(candles(times), "5m")
+        self.assertEqual(report["estimated_missing_intraday_bars"], 2)
+        self.assertIn("Possible missing intraday candles detected; verify against exchange sessions.", report["warnings"])
+
+    def test_duplicate_unsorted_invalid_and_volume_rows_are_reported(self):
+        frame = candles(["2026-01-05 09:20", "2026-01-05 09:15", "2026-01-05 09:15"], [10, -1, 0])
+        frame.loc[2, "high"] = 1
+        report = audit_historical_ohlcv(frame, "5m")
+        self.assertEqual(report["duplicate_timestamps"], 1)
+        self.assertEqual(report["out_of_order_steps"], 1)
+        self.assertEqual(report["invalid_ohlc_rows"], 1)
+        self.assertEqual(report["negative_volume_rows"], 1)
+        self.assertEqual(report["zero_volume_rows"], 1)
+        self.assertEqual(report["quality_status"], "Review required")
+
+    def test_bad_timestamps_are_counted(self):
+        frame = candles(["not-a-date", "2026-01-05 09:15", "2026-01-05 09:20"])
+        report = audit_historical_ohlcv(frame)
+        self.assertEqual(report["invalid_timestamps"], 1)
+
+    def test_empty_or_missing_columns_rejected(self):
+        with self.assertRaisesRegex(ValueError, "empty"):
+            audit_historical_ohlcv(pd.DataFrame())
+        with self.assertRaisesRegex(ValueError, "Missing required columns"):
+            audit_historical_ohlcv(pd.DataFrame({"timestamp": ["2026-01-01"]}))
+
+    def test_unsupported_interval_rejected(self):
+        frame = candles(pd.date_range("2026-01-05 09:15", periods=3, freq="5min"))
+        with self.assertRaisesRegex(ValueError, "Unsupported interval"):
+            audit_historical_ohlcv(frame, "2m")
+
+
+if __name__ == "__main__":
+    unittest.main()
