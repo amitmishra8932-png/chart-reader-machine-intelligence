@@ -6,7 +6,9 @@ Streamlit session state by the caller and are never written to disk or logged.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from io import StringIO
+from io import BytesIO, StringIO
+import gzip
+import zipfile
 from urllib.parse import urlencode
 import re
 
@@ -116,15 +118,46 @@ def _normalise_symbol(value: object) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(value or "").upper().replace("_EQ", ""))
 
 
+def _decode_scrip_master_response(content: bytes) -> str:
+    """Decode plain CSV and common compressed CSV responses from the provider."""
+    if not content:
+        raise RuntimeError("5paisa scrip master response was empty.")
+    if content.startswith(b"\x1f\x8b"):
+        try:
+            content = gzip.decompress(content)
+        except OSError as exc:
+            raise RuntimeError("5paisa scrip master returned invalid gzip data.") from exc
+    elif content.startswith(b"PK\x03\x04"):
+        try:
+            with zipfile.ZipFile(BytesIO(content)) as archive:
+                candidates = [name for name in archive.namelist() if name.lower().endswith(".csv")]
+                if not candidates:
+                    raise RuntimeError("5paisa scrip master ZIP did not contain a CSV file.")
+                content = archive.read(candidates[0])
+        except zipfile.BadZipFile as exc:
+            raise RuntimeError("5paisa scrip master returned an invalid ZIP file.") from exc
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("cp1252", errors="replace")
+    if text.lstrip().startswith("<"):
+        raise RuntimeError("5paisa scrip master returned HTML instead of CSV; check provider availability or endpoint access.")
+    return text
+
+
 def parse_scrip_master(csv_text: str) -> pd.DataFrame:
     try:
         frame = pd.read_csv(StringIO(csv_text))
     except Exception as exc:
-        raise RuntimeError("Unable to parse 5paisa NSE equity scrip master.") from exc
-    frame.columns = [str(col).strip() for col in frame.columns]
+        raise RuntimeError("Unable to parse 5paisa NSE equity scrip master as CSV.") from exc
+    frame.columns = [str(col).strip().lstrip("\ufeff") for col in frame.columns]
     required = {"ScripCode", "ScripData"}
     if not required.issubset(frame.columns):
-        raise RuntimeError("5paisa scrip master format changed; expected ScripCode and ScripData columns.")
+        found = ", ".join(frame.columns.astype(str)[:12])
+        raise RuntimeError(
+            "5paisa scrip master format changed; expected ScripCode and ScripData columns. "
+            f"Received columns: {found or 'none'}."
+        )
     if "Exch" in frame.columns:
         frame = frame[frame["Exch"].astype(str).str.upper() == "N"]
     if "ExchType" in frame.columns:
@@ -133,16 +166,32 @@ def parse_scrip_master(csv_text: str) -> pd.DataFrame:
     frame["symbol_key"] = frame["ScripData"].astype(str).map(_normalise_symbol)
     frame["ScripCode"] = pd.to_numeric(frame["ScripCode"], errors="coerce")
     frame = frame.dropna(subset=["ScripCode"])
+    frame = frame[frame["symbol_key"] != ""]
+    if frame.empty:
+        raise RuntimeError("5paisa scrip master downloaded, but it contained no usable NSE cash-equity rows.")
     return frame.drop_duplicates("symbol_key")
 
 
 def fetch_scrip_master() -> pd.DataFrame:
     try:
-        response = requests.get(SCRIP_MASTER_URL, timeout=30)
-        response.raise_for_status()
+        response = requests.get(
+            SCRIP_MASTER_URL, timeout=30,
+            headers={"Accept": "text/csv, application/zip, application/gzip, */*"},
+        )
     except requests.RequestException as exc:
-        raise RuntimeError("Unable to download the 5paisa NSE equity scrip master.") from exc
-    return parse_scrip_master(response.text)
+        raise RuntimeError(
+            f"Could not reach the 5paisa scrip-master service ({type(exc).__name__}). "
+            "Check Streamlit deployment network access and retry."
+        ) from exc
+    if not response.ok:
+        content_type = response.headers.get("Content-Type", "unknown")
+        detail = (getattr(response, "text", "") or "").strip().replace("\n", " ")[:240]
+        raise RuntimeError(
+            f"5paisa scrip-master service returned HTTP {response.status_code} "
+            f"(content type: {content_type}). {detail or 'No response details provided.'}"
+        )
+    text = _decode_scrip_master_response(response.content)
+    return parse_scrip_master(text)
 
 
 def resolve_scrip_code(master: pd.DataFrame, symbol: str) -> int:
@@ -204,7 +253,7 @@ def fetch_historical_candles(
         )
         if not response.ok:
             # Keep provider diagnostics useful without ever echoing request headers.
-            detail = (response.text or "").strip().replace("\\n", " ")[:400]
+            detail = (response.text or "").strip().replace("\n", " ")[:400]
             raise RuntimeError(
                 f"5paisa historical API returned HTTP {response.status_code} "
                 f"for {interval}. {detail or 'No response details provided.'}"

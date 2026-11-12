@@ -56,5 +56,40 @@ class FivePaisaAdapterTests(unittest.TestCase):
         self.assertEqual(frame.iloc[0]["close"], 103)
 
 
+    @patch("providers.fivepaisa.requests.get")
+    def test_scrip_master_download_accepts_gzip_csv(self, mock_get):
+        import gzip
+        response = Mock()
+        response.ok = True
+        response.content = gzip.compress(
+            b"Exch,ExchType,ScripCode,ScripData\nN,C,1333,HDFCBANK_EQ\n"
+        )
+        response.headers = {"Content-Type": "application/gzip"}
+        mock_get.return_value = response
+        from providers.fivepaisa import fetch_scrip_master
+        master = fetch_scrip_master()
+        self.assertEqual(resolve_scrip_code(master, "HDFCBANK"), 1333)
+
+    @patch("providers.fivepaisa.requests.get")
+    def test_scrip_master_download_reports_http_status(self, mock_get):
+        response = Mock()
+        response.ok = False
+        response.status_code = 503
+        response.headers = {"Content-Type": "text/plain"}
+        response.text = "Service unavailable"
+        mock_get.return_value = response
+        from providers.fivepaisa import fetch_scrip_master
+        with self.assertRaisesRegex(RuntimeError, "HTTP 503"):
+            fetch_scrip_master()
+
+    def test_scrip_master_rejects_html_response(self):
+        from providers.fivepaisa import _decode_scrip_master_response
+        with self.assertRaisesRegex(RuntimeError, "HTML instead of CSV"):
+            _decode_scrip_master_response(b"<html>maintenance</html>")
+
+    def test_scrip_master_reports_changed_columns(self):
+        with self.assertRaisesRegex(RuntimeError, "Received columns"):
+            parse_scrip_master("unexpected,columns\na,b\n")
+
 if __name__ == "__main__":
     unittest.main()
