@@ -183,10 +183,11 @@ def fetch_historical_candles(access_token: str, scrip_code: int, interval: str, 
         raise ValueError("5paisa intraday historical requests are limited to six months per request.")
     url = HISTORICAL_URL.format(scrip_code=int(scrip_code), interval=interval)
     try:
-        response = requests.get(
+        response = requests.post(
             url,
             params={"from": start.isoformat(), "end": end.isoformat()},
-            headers={"Authorization": "bearer " + access_token},
+            headers={"Authorization": "bearer " + access_token, "Content-Type": "application/json"},
+            data="",
             timeout=30,
         )
         response.raise_for_status()
