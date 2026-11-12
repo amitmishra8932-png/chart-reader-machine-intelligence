@@ -126,9 +126,10 @@ with overview:
         - [x] **Phase 6:** Historical OHLCV data-quality audit and dashboard report
 
         **Next milestones**
+        - [x] Manual paper-trading journal with risk-based sizing and CSV backup/restore
         - [ ] Verify 5paisa authentication and historical candles with real account data
-        - [ ] Live read-only market monitoring (after data verification)
-        - [ ] Walk-forward backtesting, ML experiments and paper validation
+        - [ ] Validate the paper journal with observed market prices and a documented sample
+        - [ ] Live read-only monitoring and automated signal replay (only after data/timestamp verification)
 
         *Research only: no automatic order placement. Historical-data gap counts are estimates and should be checked against exchange sessions.*
         """
@@ -491,7 +492,7 @@ with paper_tab:
         selected_trade_label = st.selectbox("Open position", list(trade_labels), key="paper_close_trade")
         selected_trade_id = trade_labels[selected_trade_label]
         exit_price = st.number_input("Observed exit price (₹)", min_value=0.01, value=0.01, step=0.05, key="paper_exit")
-        confirm_close = st.checkbox("I confirm this is the observed simulated exit price.", key="paper_confirm_close")
+        confirm_close = st.checkbox("I confirm this is the observed simulated exit price.", key=f"paper_confirm_close_{selected_trade_id}")
         if st.button("Close selected paper trade", disabled=not confirm_close, use_container_width=True):
             try:
                 for index, trade in enumerate(st.session_state["paper_trades"]):
@@ -509,7 +510,8 @@ with paper_tab:
         type=["csv"],
         key="paper_ledger_restore",
     )
-    if ledger_upload is not None and st.button("Restore uploaded ledger", key="restore_paper_ledger"):
+    restore_confirm = st.checkbox("I understand restoring will replace the current in-session ledger.", key="paper_restore_confirm")
+    if ledger_upload is not None and st.button("Restore uploaded ledger", key="restore_paper_ledger", disabled=not restore_confirm):
         try:
             restored = load_trade_ledger(ledger_upload)
             st.session_state["paper_trades"] = restored
