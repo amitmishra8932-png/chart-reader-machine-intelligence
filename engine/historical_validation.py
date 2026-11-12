@@ -106,15 +106,21 @@ def audit_nse_session_integrity(
     interval: str = "5m",
     holidays: set | None = None,
     special_sessions: dict | None = None,
+    cas_eligible: bool = False,
 ) -> dict:
     """Classify NSE cash timestamps by session without modifying source rows.
 
-    Candle timestamps are treated as bar-start timestamps. Regular cash trading
-    is 09:15-15:30. The closing auction/transition window is 15:20-15:50 and
-    the closing session is 15:50-16:00. A dated special session may override
-    the normal weekend/holiday closure and supplies its own continuous-trading
-    start/end times. This is a session classifier, not proof that provider
-    timestamps are bar starts; verify provider semantics before strategy use.
+    Session rules are selected by calendar date. For CAS-eligible securities,
+    the November 2026 schedule is continuous trading 09:15-15:15, CAS
+    15:15-15:35, transition 15:35-15:50, and post-close 15:50-16:00.
+    From 2026-12-07, continuous trading runs until 15:30, CAS 15:30-15:40,
+    transition 15:40-15:50, and post-close 15:50-16:00. Non-CAS securities
+    trade continuously until 15:30, then transition until 15:50 and post-close
+    until 16:00. Eligibility is supplied by the caller; this function does
+    not guess.
+
+    A dated special session overrides normal weekday/weekend rules. Timestamps
+    are assumed to be candle starts; provider timestamp semantics are unverified.
     """
     interval_minutes = {"5m": 5, "15m": 15}
     if interval not in interval_minutes:
@@ -130,13 +136,12 @@ def audit_nse_session_integrity(
     sessions = DEFAULT_SPECIAL_SESSIONS if special_sessions is None else special_sessions
     interval_size = interval_minutes[interval]
     open_minutes = 9 * 60 + 15
-    regular_close = 15 * 60 + 30
-    auction_start = 15 * 60 + 20
+    cas2_effective_date = pd.Timestamp("2026-12-07").date()
     closing_session_start = 15 * 60 + 50
     exchange_close = 16 * 60
 
     weekend_count = holiday_count = special_count = 0
-    auction_count = closing_count = outside_count = misaligned_count = 0
+    cas_count = transition_count = closing_count = outside_count = misaligned_count = 0
     anomaly_indices = set()
     classifications = {}
 
@@ -168,16 +173,36 @@ def audit_nse_session_integrity(
             anomaly_indices.add(index)
             continue
 
-        if auction_start <= minute < closing_session_start:
-            # NSE closing-auction order entry begins at 15:20; transition
-            # continues through 15:50. Classify it separately from regular bars.
-            classifications[index] = "closing_auction_transition"
-            auction_count += 1
-        elif open_minutes <= minute < auction_start:
+        cas2_effective = day >= cas2_effective_date
+        if cas_eligible and cas2_effective:
+            continuous_close = 15 * 60 + 30
+            cas_start = 15 * 60 + 30
+            cas_end = 15 * 60 + 40
+            transition_start = cas_end
+        elif cas_eligible:
+            continuous_close = 15 * 60 + 15
+            cas_start = 15 * 60 + 15
+            cas_end = 15 * 60 + 35
+            transition_start = cas_end
+        else:
+            continuous_close = 15 * 60 + 30
+            cas_start = cas_end = None
+            transition_start = 15 * 60 + 30
+
+        if open_minutes <= minute < continuous_close:
             classifications[index] = "regular"
             if (minute - open_minutes) % interval_size:
                 misaligned_count += 1
                 anomaly_indices.add(index)
+        elif cas_eligible and cas_start <= minute < cas_end:
+            classifications[index] = "closing_auction_session"
+            cas_count += 1
+            if (minute - cas_start) % interval_size:
+                misaligned_count += 1
+                anomaly_indices.add(index)
+        elif transition_start <= minute < closing_session_start:
+            classifications[index] = "closing_transition"
+            transition_count += 1
         elif closing_session_start <= minute < exchange_close:
             classifications[index] = "closing_session"
             closing_count += 1
@@ -196,12 +221,15 @@ def audit_nse_session_integrity(
         "weekend_timestamps": weekend_count,
         "known_holiday_timestamps": holiday_count,
         "special_session_timestamps": special_count,
-        "closing_auction_transition_timestamps": auction_count,
+        "cas_eligible": bool(cas_eligible),
+        "closing_auction_session_timestamps": cas_count,
+        "closing_transition_timestamps": transition_count,
+        "closing_auction_transition_timestamps": cas_count + transition_count,
         "closing_session_timestamps": closing_count,
         "outside_session_timestamps": outside_count,
         "misaligned_timestamps": misaligned_count,
         "session_anomaly_rows": len(anomaly_indices),
-        "non_regular_session_rows": auction_count + closing_count,
+        "non_regular_session_rows": cas_count + transition_count + closing_count,
         "regular_session_rows": sum(value == "regular" for value in classifications.values()),
         "timestamp_convention": "Assumed candle start time; confirm with provider documentation.",
         "session_classifications": classifications,
@@ -209,8 +237,11 @@ def audit_nse_session_integrity(
             ["Weekend/holiday candles outside a configured special session were found."]
             if closed_day_count else []
         ) + (
-            ["Some candles fall in the closing auction/transition window; exclude them from regular intraday signal calculations."]
-            if auction_count else []
+            ["Some candles fall in the Closing Auction Session (CAS); keep them separate from continuous intraday signal calculations."]
+            if cas_count else []
+        ) + (
+            ["Some candles fall in the CAS transition period; keep them separate from continuous intraday signal calculations."]
+            if transition_count else []
         ) + (
             ["Some candles fall in the 15:50-16:00 closing session; treat them separately from continuous intraday trading."]
             if closing_count else []

@@ -301,6 +301,13 @@ with historical_tab:
         st.dataframe(preview.tail(100), use_container_width=True, hide_index=True)
 
         st.markdown("#### Historical data quality audit")
+        cas_symbols = st.multiselect(
+            "CAS-eligible securities in this audit",
+            options=sorted(hist["symbol"].unique()),
+            default=[],
+            help="Select only securities confirmed as CAS-eligible for the selected historical dates using the applicable NSE security list. Unselected securities use the non-CAS continuous-session schedule."
+        )
+        st.caption("CAS eligibility is not inferred from NIFTY 50 membership. The selection applies to all dates in this downloaded sample; do not use it across dates where the official eligibility list changed.")
         audit_rows = []
         for (audit_symbol, audit_interval), group in hist.groupby(["symbol", "timeframe"]):
             try:
@@ -311,6 +318,7 @@ with historical_tab:
                 session_audit = audit_nse_session_integrity(
                     group[["timestamp"]],
                     audit_interval,
+                    cas_eligible=audit_symbol in cas_symbols,
                 )
                 audit_rows.append({
                     "Stock": audit_symbol,
@@ -322,7 +330,9 @@ with historical_tab:
                     "Possible missing candles": audit["estimated_missing_intraday_bars"],
                     "Weekend candles": session_audit["weekend_timestamps"],
                     "Special-session candles": session_audit["special_session_timestamps"],
-                    "Closing auction/transition": session_audit["closing_auction_transition_timestamps"],
+                    "CAS eligible": session_audit["cas_eligible"],
+                    "CAS candles": session_audit["closing_auction_session_timestamps"],
+                    "CAS transition candles": session_audit["closing_transition_timestamps"],
                     "Closing-session candles": session_audit["closing_session_timestamps"],
                     "Outside exchange sessions": session_audit["outside_session_timestamps"],
                     "Misaligned timestamps": session_audit["misaligned_timestamps"],
@@ -346,7 +356,7 @@ with historical_tab:
         st.dataframe(audit_frame, use_container_width=True, hide_index=True)
         st.caption(
             "Missing-candle counts are estimates within the same date. "
-            "Recognised sessions include the configured 8-Nov-2026 Muhurat continuous session, NSE closing auction/transition (15:20–15:50), and closing session (15:50–16:00). These non-regular records should be excluded from continuous intraday signal calculations. The audit assumes candle-start timestamps; verify 5paisa timestamp semantics before strategy use. Holiday calendars must be updated from official NSE circulars."
+            "Recognised sessions include the configured 8-Nov-2026 Muhurat continuous session. Session timings are date-aware: before 7-Dec-2026, CAS-eligible securities use continuous trading until 15:15, CAS 15:15–15:35, transition 15:35–15:50, and post-close 15:50–16:00; from 7-Dec-2026, continuous trading runs until 15:30, CAS 15:30–15:40, transition 15:40–15:50, and post-close 15:50–16:00. Non-CAS securities continue until 15:30, then are classified in the transition period. CAS eligibility must be confirmed against the dated NSE security list. The audit assumes candle-start timestamps; verify 5paisa timestamp semantics before strategy use. Holiday calendars must be updated from official NSE circulars."
         )
         st.download_button(
             "Download data quality audit (CSV)",
