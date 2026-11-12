@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 from providers.fivepaisa import (
     build_oauth_url, parse_historical_candles, parse_scrip_master,
-    resolve_scrip_code, fetch_historical_candles,
+    resolve_scrip_code, resolve_scrip_codes_via_market_feed, fetch_historical_candles,
 )
 
 
@@ -54,6 +54,42 @@ class FivePaisaAdapterTests(unittest.TestCase):
         self.assertEqual(list(frame.columns), ["timestamp", "open", "high", "low", "close", "volume"])
         self.assertEqual(len(frame), 2)
         self.assertEqual(frame.iloc[0]["close"], 103)
+
+
+
+    @patch("providers.fivepaisa.requests.post")
+    def test_market_feed_resolves_scrip_codes_from_scripdata(self, mock_post):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "head": {"status": "0", "statusDescription": "Success"},
+            "body": {"Status": 0, "Message": "Success", "Data": [
+                {"Exch": "N", "ExchType": "C", "Symbol": "HDFCBANK", "Token": 1333},
+                {"Exch": "N", "ExchType": "C", "Symbol": "RELIANCE", "Token": 2885},
+            ]},
+        }
+        mock_post.return_value = response
+        codes = resolve_scrip_codes_via_market_feed(
+            "test-token", "test-api-key", "CLIENT1", ["HDFCBANK", "RELIANCE"]
+        )
+        self.assertEqual(codes, {"HDFCBANK": 1333, "RELIANCE": 2885})
+        args, kwargs = mock_post.call_args
+        self.assertIn("/V1/MarketFeed", args[0])
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-token")
+        request_data = kwargs["json"]["body"]["MarketFeedData"]
+        self.assertEqual(request_data[0]["ScripData"], "HDFCBANK_EQ")
+        self.assertEqual(request_data[0]["Exch"], "N")
+        self.assertEqual(request_data[0]["ExchType"], "C")
+        self.assertEqual(kwargs["json"]["body"]["ClientCode"], "CLIENT1")
+
+    @patch("providers.fivepaisa.requests.post")
+    def test_market_feed_rejects_missing_scrip_code(self, mock_post):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {"head": {"status": "0"}, "body": {"Status": 0, "Data": []}}
+        mock_post.return_value = response
+        with self.assertRaisesRegex(RuntimeError, "did not return a valid NSE cash ScripCode"):
+            resolve_scrip_codes_via_market_feed("test-token", "key", "CLIENT1", ["HDFCBANK"])
 
 
     @patch("providers.fivepaisa.requests.get")
