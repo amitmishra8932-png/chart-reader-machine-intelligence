@@ -14,7 +14,9 @@ from engine.paper_trading import (
     close_paper_trade, load_trade_ledger, open_paper_trade, paper_trading_summary,
     suggest_quantity, trades_frame,
 )
-from engine.historical_validation import audit_historical_ohlcv, audit_nse_session_integrity
+from engine.historical_validation import (
+    audit_historical_ohlcv, audit_nse_session_integrity, apply_nse_signal_policy,
+)
 from engine.patterns import detect_patterns
 from data.nifty50 import NIFTY50_SYMBOLS
 from providers.fivepaisa import (
@@ -317,6 +319,7 @@ with historical_tab:
         )
         st.caption("CAS eligibility is not inferred from NIFTY 50 membership. The selection applies to all dates in this downloaded sample; do not use it across dates where the official eligibility list changed.")
         audit_rows = []
+        policy_frames = []
         for (audit_symbol, audit_interval), group in hist.groupby(["symbol", "timeframe"]):
             try:
                 audit = audit_historical_ohlcv(
@@ -328,6 +331,10 @@ with historical_tab:
                     audit_interval,
                     cas_eligible=audit_symbol in cas_symbols,
                 )
+                classified = apply_nse_signal_policy(
+                    group, audit_interval, cas_eligible=audit_symbol in cas_symbols,
+                )
+                policy_frames.append(classified)
                 audit_rows.append({
                     "Stock": audit_symbol,
                     "Timeframe": audit_interval,
@@ -344,6 +351,9 @@ with historical_tab:
                     "Closing-session candles": session_audit["closing_session_timestamps"],
                     "Outside exchange sessions": session_audit["outside_session_timestamps"],
                     "Misaligned timestamps": session_audit["misaligned_timestamps"],
+                    "Regular signal candles": int(classified["regular_signal_eligible"].sum()),
+                    "Research-only candles": int(classified["research_only"].sum()),
+                    "Special-session candles (research)": session_audit["special_session_rows"],
                     "Non-regular-session rows": session_audit["non_regular_session_rows"],
                     "Session anomaly rows": session_audit["session_anomaly_rows"],
                     "Quality status": (
@@ -362,9 +372,46 @@ with historical_tab:
                 })
         audit_frame = pd.DataFrame(audit_rows)
         st.dataframe(audit_frame, use_container_width=True, hide_index=True)
+        policy_data = pd.concat(policy_frames, ignore_index=True) if policy_frames else pd.DataFrame()
+        if not policy_data.empty:
+            regular_data = policy_data[policy_data["regular_signal_eligible"]].copy()
+            research_data = policy_data[policy_data["research_only"]].copy()
+            st.markdown("#### Session-aware signal eligibility")
+            eligible_col, research_col = st.columns(2)
+            eligible_col.metric("Regular-session signal candles", f"{len(regular_data):,}")
+            research_col.metric("Research-only candles", f"{len(research_data):,}")
+            st.caption(
+                "Only correctly aligned regular continuous-session candles are eligible for regular signals. "
+                "Special/Muhurat, CAS, transition, closing-session, closed-day, outside-session and misaligned "
+                "candles are preserved as research-only. Raw downloaded candles are never deleted."
+            )
+            with st.expander("Review research-only candles and exclusion reasons"):
+                st.dataframe(
+                    research_data[["timestamp", "symbol", "timeframe", "open", "high", "low", "close",
+                                   "volume", "session_classification", "signal_exclusion_reason"]],
+                    use_container_width=True, hide_index=True,
+                )
+            st.download_button(
+                "Download regular-session signal candles (CSV)",
+                data=regular_data.to_csv(index=False).encode("utf-8"),
+                file_name="chart_reader_regular_signal_candles.csv",
+                mime="text/csv", use_container_width=True,
+            )
+            st.download_button(
+                "Download research-only session candles (CSV)",
+                data=research_data.to_csv(index=False).encode("utf-8"),
+                file_name="chart_reader_research_only_candles.csv",
+                mime="text/csv", use_container_width=True,
+            )
         st.caption(
-            "Missing-candle counts are estimates within the same date. "
-            "Recognised sessions include the configured 8-Nov-2026 Muhurat continuous session. Session timings are date-aware: before 7-Dec-2026, CAS-eligible securities use continuous trading until 15:15, CAS 15:15–15:35, transition 15:35–15:50, and post-close 15:50–16:00; from 7-Dec-2026, continuous trading runs until 15:30, CAS 15:30–15:45, transition 15:45–15:50, and post-close 15:50–16:00. Non-CAS securities continue until 15:30, then are classified in the transition period. CAS eligibility must be confirmed against the dated NSE security list. The audit assumes candle-start timestamps; verify 5paisa timestamp semantics before strategy use. Holiday calendars must be updated from official NSE circulars."
+            "Missing-candle counts are estimates within the same date. The configured 8-Nov-2026 Muhurat session "
+            "is retained separately from regular trading. Session timings are date-aware: before 7-Dec-2026, "
+            "CAS-eligible securities use continuous trading until 15:15, CAS 15:15–15:35, transition 15:35–15:50, "
+            "and post-close 15:50–16:00; from 7-Dec-2026, continuous trading runs until 15:30, CAS 15:30–15:45, "
+            "transition 15:45–15:50, and post-close 15:50–16:00. Non-CAS securities continue until 15:30, then "
+            "are classified in the transition period. CAS eligibility must be confirmed against the dated NSE "
+            "security list. The audit assumes candle-start timestamps; verify 5paisa timestamp semantics before "
+            "strategy use. Holiday calendars must be updated from official NSE circulars."
         )
         st.download_button(
             "Download data quality audit (CSV)",
