@@ -71,20 +71,17 @@ if __name__ == "__main__":
 
 class NSESessionIntegrityTests(unittest.TestCase):
     def test_regular_session_aligned_candles_pass(self):
-        from engine.historical_validation import audit_nse_session_integrity
         frame = candles(["2026-11-09 09:15", "2026-11-09 09:30", "2026-11-09 15:15"])
         report = audit_nse_session_integrity(frame, "15m")
         self.assertEqual(report["session_anomaly_rows"], 0)
 
     def test_weekend_timestamp_is_flagged(self):
-        from engine.historical_validation import audit_nse_session_integrity
         frame = candles(["2026-11-08 10:00"])
         report = audit_nse_session_integrity(frame, "15m")
         self.assertEqual(report["weekend_timestamps"], 1)
         self.assertEqual(report["session_anomaly_rows"], 1)
 
     def test_out_of_session_and_misaligned_timestamps_are_flagged(self):
-        from engine.historical_validation import audit_nse_session_integrity
         frame = candles(["2026-11-09 08:55", "2026-11-09 15:50", "2026-11-09 09:20"])
         report = audit_nse_session_integrity(frame, "15m")
         self.assertEqual(report["outside_session_timestamps"], 1)
@@ -94,12 +91,10 @@ class NSESessionIntegrityTests(unittest.TestCase):
 
     def test_supplied_holiday_dates_are_flagged(self):
         from datetime import date
-        from engine.historical_validation import audit_nse_session_integrity
         frame = candles(["2026-11-09 09:15"])
         report = audit_nse_session_integrity(frame, "15m", holidays={date(2026, 11, 9)})
         self.assertEqual(report["known_holiday_timestamps"], 1)
         self.assertEqual(report["session_anomaly_rows"], 1)
-
 
     def test_muhurat_special_session_is_not_misclassified_as_weekend_closure(self):
         frame = candles(["2026-11-08 14:20", "2026-11-08 14:25", "2026-11-08 15:35"])
@@ -107,6 +102,23 @@ class NSESessionIntegrityTests(unittest.TestCase):
         self.assertEqual(report["special_session_timestamps"], 3)
         self.assertEqual(report["weekend_timestamps"], 3)
         self.assertEqual(report["session_anomaly_rows"], 0)
+
+    def test_muhurat_15m_opening_stub_and_grid_are_accepted(self):
+        frame = candles([
+            "2026-11-08 14:20", "2026-11-08 14:30", "2026-11-08 14:45",
+            "2026-11-08 15:00", "2026-11-08 15:15",
+        ])
+        report = audit_nse_session_integrity(frame, "15m")
+        self.assertEqual(report["special_session_timestamps"], 5)
+        self.assertEqual(report["misaligned_timestamps"], 0)
+        self.assertEqual(report["session_anomaly_rows"], 0)
+        self.assertEqual(report["session_classifications"][0], "special_continuous")
+
+    def test_muhurat_15m_non_grid_timestamp_is_still_flagged(self):
+        frame = candles(["2026-11-08 14:20", "2026-11-08 14:37", "2026-11-08 14:45"])
+        report = audit_nse_session_integrity(frame, "15m")
+        self.assertEqual(report["misaligned_timestamps"], 1)
+        self.assertEqual(report["session_anomaly_rows"], 1)
 
     def test_unscheduled_weekend_candle_remains_an_anomaly(self):
         report = audit_nse_session_integrity(candles(["2026-11-15 14:20"]), "5m")
