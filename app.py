@@ -330,10 +330,20 @@ with historical_tab:
                     audit_interval,
                     cas_eligible=audit_symbol in cas_symbols,
                 )
-                eligible_indices = set(session_audit["session_eligible_indices"])
+                # Keep the audit compatible with an older engine module that may
+                # still be loaded by Streamlit during a deployment restart.
+                session_classifications = session_audit.get("session_classifications", {})
+                session_anomalies = set(session_audit.get("session_anomaly_indices", []))
+                eligible_indices = set(session_audit.get(
+                    "session_eligible_indices",
+                    [
+                        index for index, label in session_classifications.items()
+                        if label == "regular" and index not in session_anomalies
+                    ],
+                ))
                 classified = group.copy()
                 classified["session_classification"] = classified.index.map(
-                    session_audit["session_classifications"]
+                    session_classifications
                 ).fillna("invalid_timestamp")
                 classified["session_eligible"] = classified.index.isin(eligible_indices)
                 def quarantine_reason(row):
