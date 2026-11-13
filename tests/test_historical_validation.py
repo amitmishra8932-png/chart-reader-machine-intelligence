@@ -168,3 +168,45 @@ class NSESessionIntegrityTests(unittest.TestCase):
         self.assertEqual(labels[3], "closing_transition")
         self.assertEqual(labels[4], "closing_session")
         self.assertEqual(report["closing_auction_session_timestamps"], 0)
+
+
+
+class NSESignalPolicyTests(unittest.TestCase):
+    def test_only_aligned_regular_candles_are_signal_eligible(self):
+        from engine.historical_validation import apply_nse_signal_policy
+        frame = candles([
+            "2026-11-09 09:15", "2026-11-09 09:20",
+            "2026-11-09 15:50", "2026-11-09 09:17",
+        ])
+        result = apply_nse_signal_policy(frame, "5m")
+        self.assertEqual(result["regular_signal_eligible"].tolist(), [True, True, False, False])
+        self.assertEqual(result["signal_exclusion_reason"].tolist(),
+                         ["", "", "closing_session", "misaligned_timestamp"])
+
+    def test_muhurat_session_is_research_only_not_regular_signal_data(self):
+        from engine.historical_validation import apply_nse_signal_policy
+        frame = candles(["2026-11-08 14:20", "2026-11-08 14:25", "2026-11-09 09:15"])
+        result = apply_nse_signal_policy(frame, "5m")
+        self.assertEqual(result["session_classification"].tolist(),
+                         ["special_session", "special_session", "regular"])
+        self.assertEqual(result["regular_signal_eligible"].tolist(), [False, False, True])
+        self.assertEqual(result["research_only"].tolist(), [True, True, False])
+
+    def test_cas_transition_and_closing_rows_are_research_only(self):
+        from engine.historical_validation import apply_nse_signal_policy
+        frame = candles([
+            "2026-11-12 15:10", "2026-11-12 15:15",
+            "2026-11-12 15:35", "2026-11-12 15:50",
+        ])
+        result = apply_nse_signal_policy(frame, "5m", cas_eligible=True)
+        self.assertEqual(result["regular_signal_eligible"].tolist(), [True, False, False, False])
+        self.assertEqual(result["session_classification"].tolist(),
+                         ["regular", "closing_auction_session", "closing_transition", "closing_session"])
+
+    def test_source_rows_are_preserved_and_classification_is_added(self):
+        from engine.historical_validation import apply_nse_signal_policy
+        frame = candles(["2026-11-08 14:20", "2026-11-09 09:15"])
+        result = apply_nse_signal_policy(frame, "5m")
+        self.assertEqual(len(result), len(frame))
+        self.assertIn("research_only", result.columns)
+        self.assertEqual(result["timestamp"].tolist(), frame["timestamp"].tolist())

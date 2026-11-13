@@ -143,6 +143,7 @@ def audit_nse_session_integrity(
     weekend_count = holiday_count = special_count = 0
     cas_count = transition_count = closing_count = outside_count = misaligned_count = 0
     anomaly_indices = set()
+    misaligned_indices = set()
     classifications = {}
 
     for index, timestamp in valid.items():
@@ -161,11 +162,12 @@ def audit_nse_session_integrity(
             special_start = start_h * 60 + start_m
             special_end = end_h * 60 + end_m
             if special_start <= minute < special_end:
-                classifications[index] = "special_continuous"
+                classifications[index] = "special_session"
                 special_count += 1
                 if (minute - special_start) % interval_size:
                     misaligned_count += 1
                     anomaly_indices.add(index)
+                    misaligned_indices.add(index)
                 continue
 
         if is_weekend or is_holiday:
@@ -194,12 +196,14 @@ def audit_nse_session_integrity(
             if (minute - open_minutes) % interval_size:
                 misaligned_count += 1
                 anomaly_indices.add(index)
+                misaligned_indices.add(index)
         elif cas_eligible and cas_start <= minute < cas_end:
             classifications[index] = "closing_auction_session"
             cas_count += 1
             if (minute - cas_start) % interval_size:
                 misaligned_count += 1
                 anomaly_indices.add(index)
+                misaligned_indices.add(index)
         elif transition_start <= minute < closing_session_start:
             classifications[index] = "closing_transition"
             transition_count += 1
@@ -209,6 +213,7 @@ def audit_nse_session_integrity(
             if (minute - closing_session_start) % interval_size:
                 misaligned_count += 1
                 anomaly_indices.add(index)
+                misaligned_indices.add(index)
         else:
             classifications[index] = "outside_exchange_sessions"
             outside_count += 1
@@ -221,6 +226,7 @@ def audit_nse_session_integrity(
         "weekend_timestamps": weekend_count,
         "known_holiday_timestamps": holiday_count,
         "special_session_timestamps": special_count,
+        "special_session_rows": special_count,
         "cas_eligible": bool(cas_eligible),
         "closing_auction_session_timestamps": cas_count,
         "closing_transition_timestamps": transition_count,
@@ -229,13 +235,17 @@ def audit_nse_session_integrity(
         "outside_session_timestamps": outside_count,
         "misaligned_timestamps": misaligned_count,
         "session_anomaly_rows": len(anomaly_indices),
-        "non_regular_session_rows": cas_count + transition_count + closing_count,
+        "non_regular_session_rows": special_count + cas_count + transition_count + closing_count,
         "regular_session_rows": sum(value == "regular" for value in classifications.values()),
         "timestamp_convention": "Assumed candle start time; confirm with provider documentation.",
         "session_classifications": classifications,
+        "misaligned_row_indices": sorted(misaligned_indices),
         "warnings": (
             ["Weekend/holiday candles outside a configured special session were found."]
             if closed_day_count else []
+        ) + (
+            ["Some candles fall in a configured special trading session; retain for separate research, not regular-session signals."]
+            if special_count else []
         ) + (
             ["Some candles fall in the Closing Auction Session (CAS); keep them separate from continuous intraday signal calculations."]
             if cas_count else []
@@ -253,3 +263,52 @@ def audit_nse_session_integrity(
             if misaligned_count else []
         ),
     }
+
+
+
+def apply_nse_signal_policy(
+    frame: pd.DataFrame,
+    interval: str = "5m",
+    holidays: set | None = None,
+    special_sessions: dict | None = None,
+    cas_eligible: bool = False,
+) -> pd.DataFrame:
+    """Annotate rows for the approved policy without deleting source candles.
+
+    Only correctly aligned regular continuous-session candles are eligible for
+    regular intraday signals. Muhurat/special sessions, CAS, transition,
+    closing-session, closed-day, outside-session and misaligned rows are
+    retained as research-only rows with an explicit exclusion reason.
+    """
+    if frame is None or frame.empty:
+        raise ValueError("Historical dataset is empty.")
+    if "timestamp" not in frame.columns:
+        raise ValueError("Missing required columns: timestamp")
+
+    result = frame.copy()
+    audit = audit_nse_session_integrity(
+        result, interval, holidays=holidays,
+        special_sessions=special_sessions, cas_eligible=cas_eligible,
+    )
+    labels = audit["session_classifications"]
+    misaligned = set(audit["misaligned_row_indices"])
+    classifications = [labels.get(index, "invalid_timestamp") for index in result.index]
+    aligned = [index not in misaligned for index in result.index]
+    eligible = [
+        label == "regular" and is_aligned
+        for label, is_aligned in zip(classifications, aligned)
+    ]
+    reasons = []
+    for label, is_aligned in zip(classifications, aligned):
+        if label == "regular" and not is_aligned:
+            reasons.append("misaligned_timestamp")
+        elif label == "regular":
+            reasons.append("")
+        else:
+            reasons.append(label)
+
+    result["session_classification"] = classifications
+    result["regular_signal_eligible"] = eligible
+    result["research_only"] = [not value for value in eligible]
+    result["signal_exclusion_reason"] = reasons
+    return result
