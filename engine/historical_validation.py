@@ -252,6 +252,11 @@ def audit_nse_session_integrity(
         "regular_session_rows": sum(value == "regular" for value in classifications.values()),
         "timestamp_convention": "Assumed candle start time; confirm with provider documentation.",
         "session_classifications": classifications,
+        "session_anomaly_indices": sorted(anomaly_indices),
+        "session_eligible_indices": sorted(
+            index for index, label in classifications.items()
+            if label == "regular" and index not in anomaly_indices
+        ),
         "warnings": (
             ["Weekend/holiday candles outside a configured special session were found."]
             if closed_day_count else []
