@@ -98,8 +98,13 @@ DEFAULT_SPECIAL_SESSIONS = {
         "start": "14:20",
         "end": "15:40",
         "label": "Diwali Muhurat Trading",
+        # The 15-minute provider series begins with a 10-minute opening stub
+        # (14:20), then follows the 15-minute grid from 14:30.
+        "alignment_starts": {"5m": "14:20", "15m": "14:30"},
+        "opening_partial_start": "14:20",
     },
 }
+
 
 def audit_nse_session_integrity(
     frame: pd.DataFrame,
@@ -113,14 +118,16 @@ def audit_nse_session_integrity(
     Session rules are selected by calendar date. For CAS-eligible securities,
     the November 2026 schedule is continuous trading 09:15-15:15, CAS
     15:15-15:35, transition 15:35-15:50, and post-close 15:50-16:00.
-    From 2026-12-07, continuous trading runs until 15:30, CAS 15:30-15:40,
-    transition 15:40-15:50, and post-close 15:50-16:00. Non-CAS securities
+    From 2026-12-07, continuous trading runs until 15:30, CAS 15:30-15:45,
+    transition 15:45-15:50, and post-close 15:50-16:00. Non-CAS securities
     trade continuously until 15:30, then transition until 15:50 and post-close
     until 16:00. Eligibility is supplied by the caller; this function does
     not guess.
 
-    A dated special session overrides normal weekday/weekend rules. Timestamps
-    are assumed to be candle starts; provider timestamp semantics are unverified.
+    A dated special session overrides normal weekday/weekend rules. Special
+    sessions may define interval-specific alignment starts and an opening
+    partial candle. Timestamps are assumed to be candle starts; provider
+    timestamp semantics are unverified.
     """
     interval_minutes = {"5m": 5, "15m": 15}
     if interval not in interval_minutes:
@@ -163,7 +170,19 @@ def audit_nse_session_integrity(
             if special_start <= minute < special_end:
                 classifications[index] = "special_continuous"
                 special_count += 1
-                if (minute - special_start) % interval_size:
+                alignment_text = special.get("alignment_starts", {}).get(
+                    interval, special["start"]
+                )
+                align_h, align_m = map(int, alignment_text.split(":"))
+                alignment_start = align_h * 60 + align_m
+                partial_text = special.get("opening_partial_start")
+                is_opening_partial = (
+                    partial_text is not None
+                    and minute == sum(int(part) * factor for part, factor in zip(
+                        partial_text.split(":"), (60, 1)
+                    ))
+                )
+                if not is_opening_partial and (minute - alignment_start) % interval_size:
                     misaligned_count += 1
                     anomaly_indices.add(index)
                 continue
