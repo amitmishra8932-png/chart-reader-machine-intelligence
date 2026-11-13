@@ -317,6 +317,8 @@ with historical_tab:
         )
         st.caption("CAS eligibility is not inferred from NIFTY 50 membership. The selection applies to all dates in this downloaded sample; do not use it across dates where the official eligibility list changed.")
         audit_rows = []
+        quarantine_frames = []
+        eligible_counts = []
         for (audit_symbol, audit_interval), group in hist.groupby(["symbol", "timeframe"]):
             try:
                 audit = audit_historical_ohlcv(
@@ -328,6 +330,35 @@ with historical_tab:
                     audit_interval,
                     cas_eligible=audit_symbol in cas_symbols,
                 )
+                eligible_indices = set(session_audit["session_eligible_indices"])
+                classified = group.copy()
+                classified["session_classification"] = classified.index.map(
+                    session_audit["session_classifications"]
+                ).fillna("invalid_timestamp")
+                classified["session_eligible"] = classified.index.isin(eligible_indices)
+                def quarantine_reason(row):
+                    label = row["session_classification"]
+                    if label == "special_continuous":
+                        return "Special session: historical research only"
+                    if label == "regular" and not row["session_eligible"]:
+                        return "Timestamp alignment anomaly"
+                    if label in {"closing_auction_session", "closing_transition", "closing_session"}:
+                        return "Non-continuous closing session"
+                    if label == "closed_day":
+                        return "Weekend or holiday candle"
+                    if label == "outside_exchange_sessions":
+                        return "Outside recognised exchange session"
+                    return "Invalid or unclassified timestamp"
+                classified["quarantine_reason"] = classified.apply(quarantine_reason, axis=1)
+                quarantined = classified.loc[~classified["session_eligible"]].copy()
+                if not quarantined.empty:
+                    quarantine_frames.append(quarantined)
+                eligible_counts.append({
+                    "Stock": audit_symbol,
+                    "Timeframe": audit_interval,
+                    "Regular-session eligible rows": len(eligible_indices),
+                    "Quarantined rows": len(quarantined),
+                })
                 audit_rows.append({
                     "Stock": audit_symbol,
                     "Timeframe": audit_interval,
@@ -362,6 +393,24 @@ with historical_tab:
                 })
         audit_frame = pd.DataFrame(audit_rows)
         st.dataframe(audit_frame, use_container_width=True, hide_index=True)
+        st.markdown("#### Session eligibility gate")
+        st.caption(
+            "Only aligned regular-session rows are session-eligible. Muhurat candles are retained for research, while misaligned, invalid, weekend/holiday, closing-auction, transition and closing-session rows are quarantined. This is a session gate only; OHLCV integrity checks remain separate. Raw candles are never deleted or rewritten."
+        )
+        st.dataframe(pd.DataFrame(eligible_counts), use_container_width=True, hide_index=True)
+        quarantine_frame = (
+            pd.concat(quarantine_frames, ignore_index=False).sort_values(["symbol", "timeframe", "timestamp"])
+            if quarantine_frames else pd.DataFrame(columns=list(hist.columns) + ["session_classification", "session_eligible", "quarantine_reason"])
+        )
+        st.metric("Quarantined rows (preserved)", len(quarantine_frame))
+        if not quarantine_frame.empty:
+            st.dataframe(quarantine_frame, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download quarantined candles (CSV)",
+            data=quarantine_frame.to_csv(index=False).encode("utf-8"),
+            file_name="chart_reader_quarantined_candles.csv",
+            mime="text/csv", use_container_width=True,
+        )
         st.caption(
             "Missing-candle counts are estimates within the same date. "
             "Recognised sessions include the configured 8-Nov-2026 Muhurat continuous session. Session timings are date-aware: before 7-Dec-2026, CAS-eligible securities use continuous trading until 15:15, CAS 15:15–15:35, transition 15:35–15:50, and post-close 15:50–16:00; from 7-Dec-2026, continuous trading runs until 15:30, CAS 15:30–15:45, transition 15:45–15:50, and post-close 15:50–16:00. Non-CAS securities continue until 15:30, then are classified in the transition period. CAS eligibility must be confirmed against the dated NSE security list. The audit assumes candle-start timestamps; verify 5paisa timestamp semantics before strategy use. Holiday calendars must be updated from official NSE circulars."

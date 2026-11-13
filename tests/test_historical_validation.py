@@ -150,6 +150,8 @@ class NSESessionIntegrityTests(unittest.TestCase):
         report = audit_nse_session_integrity(candles(["2026-11-12 09:17"]), "5m")
         self.assertEqual(report["misaligned_timestamps"], 1)
         self.assertEqual(report["session_anomaly_rows"], 1)
+        self.assertEqual(report["session_anomaly_indices"], [0])
+        self.assertEqual(report["session_eligible_indices"], [])
 
     def test_cas_2_schedule_applies_from_7_december_2026(self):
         frame = candles(["2026-12-04 15:10", "2026-12-04 15:15", "2026-12-04 15:30",
