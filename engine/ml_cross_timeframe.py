@@ -45,11 +45,11 @@ def _compare_pair(left: dict[str, Any], right: dict[str, Any], min_effect_pp: fl
     b = _directional_effect(right, min_effect_pp)
     if not a["eligible"] or not b["eligible"]:
         status = "insufficient_support"
-    elif a["direction"] == b["direction"] and a["direction"] in {"bullish", "bearish"}:
-        status = "same_direction"
-    elif a["direction"] != b["direction"]:
-        status = "direction_conflict"
+    elif a["direction"] in {"bullish", "bearish"} and b["direction"] in {"bullish", "bearish"}:
+        status = "same_direction" if a["direction"] == b["direction"] else "direction_conflict"
     else:
+        # A weak/neutral result is not a directional conflict with a bullish
+        # or bearish result; it means the pair has no clear shared direction.
         status = "no_clear_direction"
     return {"5m": a, "15m": b, "status": status}
 
