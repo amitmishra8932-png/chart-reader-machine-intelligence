@@ -3,11 +3,52 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from engine.feature_validation import chronological_date_split
 from engine.features import add_features
 from engine.ml_targets import add_directional_targets
+
+
+def _validate_ml_input(frame: pd.DataFrame) -> None:
+    """Fail closed on malformed OHLCV rows before feature/label generation."""
+    required = {"timestamp", "symbol", "timeframe", "open", "high", "low", "close", "volume"}
+    missing = required.difference(frame.columns)
+    if missing:
+        raise ValueError(f"Missing required ML dataset columns: {sorted(missing)}")
+    if frame.empty:
+        raise ValueError("Cannot prepare an empty dataset.")
+
+    timestamps = pd.to_datetime(frame["timestamp"], errors="coerce")
+    if timestamps.isna().any():
+        raise ValueError("Every timestamp must be parseable before ML preparation.")
+    for column in ("symbol", "timeframe"):
+        values = frame[column]
+        if values.isna().any() or values.astype(str).str.strip().eq("").any():
+            raise ValueError(f"{column} cannot be missing or blank.")
+
+    numeric = frame[["open", "high", "low", "close", "volume"]].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    if not np.isfinite(numeric.to_numpy(dtype=float)).all():
+        raise ValueError("OHLCV values must all be finite numeric values.")
+    if (numeric[["open", "high", "low", "close"]] <= 0).any().any():
+        raise ValueError("OHLC prices must be positive.")
+    if (numeric["volume"] < 0).any():
+        raise ValueError("Volume cannot be negative.")
+    invalid_ohlc = (
+        numeric["high"] < numeric[["open", "close", "low"]].max(axis=1)
+    ) | (
+        numeric["low"] > numeric[["open", "close", "high"]].min(axis=1)
+    )
+    if invalid_ohlc.any():
+        raise ValueError("Invalid OHLC candle geometry must be resolved first.")
+
+    keys = frame[["symbol", "timeframe"]].astype(str).copy()
+    keys["timestamp"] = timestamps
+    if keys.duplicated(["symbol", "timeframe", "timestamp"]).any():
+        raise ValueError("Duplicate symbol/timeframe/timestamp rows must be resolved first.")
 
 
 def build_ml_dataset(
@@ -22,12 +63,7 @@ def build_ml_dataset(
     This prepares a research dataset only. It does not fit a model or claim
     predictive performance. All rows from a calendar date remain in one split.
     """
-    required = {"timestamp", "symbol", "timeframe", "open", "high", "low", "close"}
-    missing = required.difference(frame.columns)
-    if missing:
-        raise ValueError(f"Missing required ML dataset columns: {sorted(missing)}")
-    if frame.empty:
-        raise ValueError("Cannot prepare an empty dataset.")
+    _validate_ml_input(frame)
 
     # Reset only the working index so independently generated columns align
     # positionally even if the uploaded CSV contains duplicate index labels.
