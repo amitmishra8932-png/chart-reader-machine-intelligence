@@ -9,6 +9,7 @@ from engine.feature_validation import (
     chronological_date_split,
 )
 from engine.multitimeframe import align_closed_higher_timeframe
+from engine.features import add_features
 
 
 class FeatureValidationTests(unittest.TestCase):
@@ -72,6 +73,36 @@ class FeatureValidationTests(unittest.TestCase):
         frame.loc[0, "timestamp"] = "not-a-date"
         with self.assertRaisesRegex(ValueError, "Invalid timestamps"):
             chronological_date_split(frame)
+
+
+class LongHorizonFeatureTests(unittest.TestCase):
+    def test_sma50_and_ema50_warm_across_sessions_without_mixing_symbols(self):
+        rows = []
+        for symbol in ("AAA", "BBB"):
+            for day in pd.date_range("2026-01-05", periods=3, freq="B"):
+                for step in range(25):
+                    close = 100.0 + step + (0 if symbol == "AAA" else 50)
+                    rows.append({
+                        "timestamp": day + pd.Timedelta(hours=9, minutes=15 + step * 15),
+                        "open": close - 0.2,
+                        "high": close + 0.5,
+                        "low": close - 0.5,
+                        "close": close,
+                        "volume": 1000 + step,
+                        "symbol": symbol,
+                        "timeframe": "15m",
+                    })
+        frame = pd.DataFrame(rows)
+        result = add_features(frame)
+        first_symbol = result[result["symbol"] == "AAA"].reset_index(drop=True)
+        second_symbol = result[result["symbol"] == "BBB"].reset_index(drop=True)
+        self.assertTrue(pd.isna(first_symbol.loc[48, "feature_sma_50_distance_pct"]))
+        self.assertTrue(pd.notna(first_symbol.loc[49, "feature_sma_50_distance_pct"]))
+        self.assertTrue(pd.notna(first_symbol.loc[49, "feature_ema_50_distance_pct"]))
+        self.assertTrue(pd.isna(second_symbol.loc[48, "feature_sma_50_distance_pct"]))
+        self.assertTrue(pd.notna(second_symbol.loc[49, "feature_sma_50_distance_pct"]))
+        # Intraday returns still reset at the new session boundary.
+        self.assertTrue(pd.isna(first_symbol.loc[25, "feature_return_1"]))
 
 
 class ClosedCandleAlignmentTests(unittest.TestCase):
