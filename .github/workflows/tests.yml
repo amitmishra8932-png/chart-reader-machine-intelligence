@@ -1,7 +1,7 @@
 name: Python engine tests
 on:
   push:
-    branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation]
+    branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation, phase-8-2c-detector-boundary-isolation, phase-8-3-causal-feature-engineering]
   pull_request:
     branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation]
 jobs:
