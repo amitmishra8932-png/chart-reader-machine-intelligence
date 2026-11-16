@@ -9,6 +9,7 @@ import pandas as pd
 from engine.feature_validation import chronological_date_split
 from engine.features import add_features
 from engine.ml_targets import add_directional_targets
+from engine.patterns import detect_patterns
 
 
 def _validate_ml_input(frame: pd.DataFrame) -> None:
@@ -69,6 +70,18 @@ def build_ml_dataset(
     # positionally even if the uploaded CSV contains duplicate index labels.
     source = frame.reset_index(drop=True).copy()
     features = add_features(source)
+
+    # Feed the existing causal detector outputs into ML as explicit binary
+    # inputs. Keep the human-readable detected_patterns string out of training.
+    detected = detect_patterns(source)
+    pattern_columns = sorted(
+        column for column in detected.columns
+        if column.startswith("pattern_")
+        and pd.api.types.is_bool_dtype(detected[column])
+    )
+    for column in pattern_columns:
+        features[f"feature_{column}"] = detected[column].astype("int8").to_numpy()
+
     labelled = add_directional_targets(
         features, neutral_bands_pct=neutral_bands_pct
     )
@@ -91,6 +104,10 @@ def build_ml_dataset(
         "symbols": sorted(split["symbol"].astype(str).unique().tolist()),
         "timeframes": sorted(split["timeframe"].astype(str).unique().tolist()),
         "feature_columns": feature_columns,
+        "pattern_feature_columns": [
+            f"feature_{column}" for column in pattern_columns
+        ],
+        "pattern_feature_count": int(len(pattern_columns)),
         "neutral_bands_pct": {
             str(horizon): float(band)
             for horizon, band in sorted(neutral_bands_pct.items())
