@@ -81,11 +81,11 @@ class ClosedCandleAlignmentTests(unittest.TestCase):
             "timestamp": pd.to_datetime([
                 "2026-01-05 09:15", "2026-01-05 09:20",
                 "2026-01-05 09:25", "2026-01-05 09:30",
-                "2026-01-06 09:15",
+                "2026-01-06 09:15", "2026-01-06 09:25",
             ]),
-            "symbol": ["AAA"] * 5,
-            "close": [100, 101, 102, 103, 104],
-        }, index=[10, 11, 12, 13, 14])
+            "symbol": ["AAA"] * 6,
+            "close": [100, 101, 102, 103, 104, 105],
+        }, index=[10, 11, 12, 13, 14, 15])
         higher = pd.DataFrame({
             "timestamp": pd.to_datetime([
                 "2026-01-05 09:15", "2026-01-05 09:30",
@@ -105,10 +105,12 @@ class ClosedCandleAlignmentTests(unittest.TestCase):
             higher_timestamp_label="start",
         )
         self.assertTrue(pd.isna(result.loc[10, "context_15m_close"]))
-        self.assertEqual(result.loc[11, "context_15m_close"], 200)
+        self.assertTrue(pd.isna(result.loc[11, "context_15m_close"]))
         self.assertEqual(result.loc[12, "context_15m_close"], 200)
-        self.assertEqual(result.loc[13, "context_15m_close"], 210)
-        self.assertEqual(result.loc[14, "context_15m_close"], 220)
+        self.assertEqual(result.loc[13, "context_15m_close"], 200)
+        self.assertTrue(pd.isna(result.loc[14, "context_15m_close"]))
+        self.assertTrue(pd.isna(result.loc[15, "context_15m_close"]))
+        self.assertEqual(result.loc[15, "context_15m_close"], 220)
 
     def test_end_labeled_bars_match_only_at_or_before_base_close(self):
         base, higher = self.frames()
@@ -117,10 +119,11 @@ class ClosedCandleAlignmentTests(unittest.TestCase):
             base_timestamp_label="end",
             higher_timestamp_label="end",
         )
-        self.assertTrue(pd.isna(result.loc[10, "context_15m_close"]))
+        self.assertEqual(result.loc[10, "context_15m_close"], 200)
         self.assertEqual(result.loc[11, "context_15m_close"], 200)
         self.assertEqual(result.loc[12, "context_15m_close"], 200)
         self.assertEqual(result.loc[13, "context_15m_close"], 210)
+        self.assertEqual(result.loc[14, "context_15m_close"], 220)
 
     def test_does_not_carry_context_across_session(self):
         base, higher = self.frames()
