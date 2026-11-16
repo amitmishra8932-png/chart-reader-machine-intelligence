@@ -109,7 +109,6 @@ class ClosedCandleAlignmentTests(unittest.TestCase):
         self.assertEqual(result.loc[12, "context_15m_close"], 200)
         self.assertEqual(result.loc[13, "context_15m_close"], 200)
         self.assertTrue(pd.isna(result.loc[14, "context_15m_close"]))
-        self.assertTrue(pd.isna(result.loc[15, "context_15m_close"]))
         self.assertEqual(result.loc[15, "context_15m_close"], 220)
 
     def test_end_labeled_bars_match_only_at_or_before_base_close(self):
@@ -124,6 +123,7 @@ class ClosedCandleAlignmentTests(unittest.TestCase):
         self.assertEqual(result.loc[12, "context_15m_close"], 200)
         self.assertEqual(result.loc[13, "context_15m_close"], 210)
         self.assertEqual(result.loc[14, "context_15m_close"], 220)
+        self.assertEqual(result.loc[15, "context_15m_close"], 220)
 
     def test_does_not_carry_context_across_session(self):
         base, higher = self.frames()
@@ -134,6 +134,7 @@ class ClosedCandleAlignmentTests(unittest.TestCase):
             higher_timestamp_label="start",
         )
         self.assertTrue(pd.isna(result.loc[14, "context_15m_close"]))
+        self.assertTrue(pd.isna(result.loc[15, "context_15m_close"]))
 
     def test_does_not_mix_symbols(self):
         base, higher = self.frames()
