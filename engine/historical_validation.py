@@ -277,3 +277,57 @@ def audit_nse_session_integrity(
             if misaligned_count else []
         ),
     }
+
+
+
+def apply_nse_signal_policy(
+    frame: pd.DataFrame,
+    interval: str = "5m",
+    holidays: set | None = None,
+    special_sessions: dict | None = None,
+    cas_eligible: bool = False,
+) -> pd.DataFrame:
+    """Annotate, but never delete, rows eligible for regular NSE intraday signals.
+
+    The existing session audit is the source of truth. Only its aligned regular
+    session indices are signal-eligible; all other source rows remain present
+    and are marked research-only with a reason.
+    """
+    if frame is None or frame.empty:
+        raise ValueError("Historical dataset is empty.")
+    if "timestamp" not in frame.columns:
+        raise ValueError("Missing required columns: timestamp")
+
+    result = frame.copy()
+    audit = audit_nse_session_integrity(
+        result, interval, holidays=holidays,
+        special_sessions=special_sessions, cas_eligible=cas_eligible,
+    )
+    classifications = audit.get("session_classifications", {})
+    eligible_indices = set(audit.get("session_eligible_indices", []))
+    anomaly_indices = set(audit.get("session_anomaly_indices", []))
+
+    labels = [classifications.get(index, "invalid_timestamp") for index in result.index]
+    eligible = [index in eligible_indices for index in result.index]
+    reasons = []
+    for index, label, is_eligible in zip(result.index, labels, eligible):
+        if is_eligible:
+            reasons.append("")
+        elif label == "regular" or index in anomaly_indices:
+            reasons.append("misaligned_or_session_anomaly")
+        elif label == "special_continuous":
+            reasons.append("special_session_research_only")
+        elif label in {"closing_auction_session", "closing_transition", "closing_session"}:
+            reasons.append("non_continuous_closing_session")
+        elif label == "closed_day":
+            reasons.append("weekend_or_holiday")
+        elif label == "outside_exchange_sessions":
+            reasons.append("outside_recognised_exchange_session")
+        else:
+            reasons.append("invalid_or_unclassified_timestamp")
+
+    result["session_classification"] = labels
+    result["regular_signal_eligible"] = eligible
+    result["research_only"] = [not value for value in eligible]
+    result["signal_exclusion_reason"] = reasons
+    return result

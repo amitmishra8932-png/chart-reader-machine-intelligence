@@ -14,7 +14,7 @@ from engine.paper_trading import (
     close_paper_trade, load_trade_ledger, open_paper_trade, paper_trading_summary,
     suggest_quantity, trades_frame,
 )
-from engine.historical_validation import audit_historical_ohlcv, audit_nse_session_integrity
+from engine.historical_validation import audit_historical_ohlcv, audit_nse_session_integrity, apply_nse_signal_policy
 from engine.patterns import detect_patterns
 from data.nifty50 import NIFTY50_SYMBOLS
 from providers.fivepaisa import (
@@ -318,6 +318,7 @@ with historical_tab:
         st.caption("CAS eligibility is not inferred from NIFTY 50 membership. The selection applies to all dates in this downloaded sample; do not use it across dates where the official eligibility list changed.")
         audit_rows = []
         quarantine_frames = []
+        regular_signal_frames = []
         eligible_counts = []
         for (audit_symbol, audit_interval), group in hist.groupby(["symbol", "timeframe"]):
             try:
@@ -341,32 +342,29 @@ with historical_tab:
                         if label == "regular" and index not in session_anomalies
                     ],
                 ))
-                classified = group.copy()
-                classified["session_classification"] = classified.index.map(
-                    session_classifications
-                ).fillna("invalid_timestamp")
-                classified["session_eligible"] = classified.index.isin(eligible_indices)
-                def quarantine_reason(row):
-                    label = row["session_classification"]
-                    if label == "special_continuous":
-                        return "Special session: historical research only"
-                    if label == "regular" and not row["session_eligible"]:
-                        return "Timestamp alignment anomaly"
-                    if label in {"closing_auction_session", "closing_transition", "closing_session"}:
-                        return "Non-continuous closing session"
-                    if label == "closed_day":
-                        return "Weekend or holiday candle"
-                    if label == "outside_exchange_sessions":
-                        return "Outside recognised exchange session"
-                    return "Invalid or unclassified timestamp"
-                classified["quarantine_reason"] = classified.apply(quarantine_reason, axis=1)
-                quarantined = classified.loc[~classified["session_eligible"]].copy()
+                classified = apply_nse_signal_policy(
+                    group, audit_interval, cas_eligible=audit_symbol in cas_symbols,
+                )
+                classified["session_eligible"] = classified["regular_signal_eligible"]
+                classified["quarantine_reason"] = classified["signal_exclusion_reason"].map({
+                    "special_session_research_only": "Special session: historical research only",
+                    "misaligned_or_session_anomaly": "Timestamp alignment/session anomaly",
+                    "non_continuous_closing_session": "Non-continuous closing session",
+                    "weekend_or_holiday": "Weekend or holiday candle",
+                    "outside_recognised_exchange_session": "Outside recognised exchange session",
+                    "invalid_or_unclassified_timestamp": "Invalid or unclassified timestamp",
+                    "": "",
+                }).fillna("Invalid or unclassified timestamp")
+                quarantined = classified.loc[classified["research_only"]].copy()
+                regular_signal = classified.loc[classified["regular_signal_eligible"]].copy()
+                if not regular_signal.empty:
+                    regular_signal_frames.append(regular_signal)
                 if not quarantined.empty:
                     quarantine_frames.append(quarantined)
                 eligible_counts.append({
                     "Stock": audit_symbol,
                     "Timeframe": audit_interval,
-                    "Regular-session eligible rows": len(eligible_indices),
+                    "Regular-session eligible rows": int(classified["regular_signal_eligible"].sum()),
                     "Quarantined rows": len(quarantined),
                 })
                 audit_rows.append({
@@ -419,6 +417,20 @@ with historical_tab:
             "Download quarantined candles (CSV)",
             data=quarantine_frame.to_csv(index=False).encode("utf-8"),
             file_name="chart_reader_quarantined_candles.csv",
+            mime="text/csv", use_container_width=True,
+        )
+        regular_signal_frame = (
+            pd.concat(regular_signal_frames, ignore_index=True)
+            if regular_signal_frames else pd.DataFrame(columns=list(hist.columns) + [
+                "session_classification", "regular_signal_eligible", "research_only",
+                "signal_exclusion_reason", "session_eligible", "quarantine_reason",
+            ])
+        )
+        st.metric("Regular-session signal-eligible rows", len(regular_signal_frame))
+        st.download_button(
+            "Download regular-session signal candles (CSV)",
+            data=regular_signal_frame.to_csv(index=False).encode("utf-8"),
+            file_name="chart_reader_regular_signal_candles.csv",
             mime="text/csv", use_container_width=True,
         )
         st.caption(
