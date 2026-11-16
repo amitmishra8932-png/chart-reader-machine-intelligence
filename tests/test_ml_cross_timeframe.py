@@ -10,7 +10,7 @@ def make_report(timeframe, offset=0.0):
         comparison = {
             "eligible": True,
             "rate_difference_pattern_minus_comparison": {
-                "-1": -0.04 + offset, "0": 0.0, "1": 0.08 + offset
+                "-1": -0.04, "0": 0.0, "1": 0.08 + offset
             },
         }
         by_symbol = {
@@ -43,7 +43,7 @@ class CrossTimeframeTests(unittest.TestCase):
 
     def test_direction_conflict_is_reported(self):
         result = analyze_cross_timeframe_robustness(
-            make_report("5m"), make_report("15m", offset=-0.10)
+            make_report("5m"), make_report("15m", offset=-0.20)
         )
         hammer = result["horizons"]["3"]["patterns"]["feature_pattern_hammer"]
         self.assertEqual(hammer["overall"]["status"], "direction_conflict")
