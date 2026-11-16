@@ -26,6 +26,8 @@ def label_forward_returns(frame: pd.DataFrame, horizons=(3, 6, 12)) -> pd.DataFr
     })
 
     group_columns = [column for column in ("symbol", "timeframe") if column in df.columns]
+    for column in group_columns:
+        work[column] = df[column].to_numpy()
     sort_columns = list(group_columns)
 
     if "timestamp" in df.columns and not pd.api.types.is_numeric_dtype(df["timestamp"]):
