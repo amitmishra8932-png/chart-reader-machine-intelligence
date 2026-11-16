@@ -109,6 +109,7 @@ def align_closed_higher_timeframe(
                 tolerance=allowed_age,
                 allow_exact_matches=True,
             )
+            merged[f"{higher_prefix}available_at"] = merged["__available_at"]
         merged[f"{higher_prefix}age_minutes"] = (
             merged["__decision_time"] - merged["__available_at"]
         ).dt.total_seconds() / 60.0
