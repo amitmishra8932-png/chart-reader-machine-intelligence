@@ -3,7 +3,7 @@ on:
   push:
     branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation, phase-8-2c-detector-boundary-isolation, phase-8-3-causal-feature-engineering, phase-8-4-validation-and-closed-bar-context, phase-8-5-leakage-safe-ml-targets]
   pull_request:
-    branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation, phase-8-2c-detector-boundary-isolation, phase-8-3-causal-feature-engineering, phase-8-4-validation-and-closed-bar-context]
+    branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation, phase-8-2c-detector-boundary-isolation, phase-8-3-causal-feature-engineering, phase-8-4-validation-and-closed-bar-context, phase-8-5-leakage-safe-ml-targets]
 jobs:
   test:
     runs-on: ubuntu-latest
