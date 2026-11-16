@@ -217,5 +217,4 @@ class NSESignalPolicyTests(unittest.TestCase):
         ])
         result = apply_nse_signal_policy(frame, "5m", cas_eligible=True)
         self.assertEqual(result["regular_signal_eligible"].tolist(), [True, False, False, False])
-        self.assertTrue(result["research_only"].all() is False if False else True)
         self.assertEqual(result["research_only"].tolist(), [False, True, True, True])
