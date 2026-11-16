@@ -134,15 +134,18 @@ def analyze_pattern_context(
                     pd.to_numeric, errors="coerce"
                 )
                 context_frame = usable.copy()
-                context_frame["__trend_regime"] = np.where(
-                    context[trend_feature] > 0, "above_sma20",
-                    np.where(context[trend_feature].notna(), "below_or_at_sma20", None),
-                )
-                context_frame["__volume_regime"] = np.where(
-                    context[volume_feature] >= elevated_volume_threshold,
-                    "elevated_volume",
-                    np.where(context[volume_feature].notna(), "normal_or_low_volume", None),
-                )
+                trend_values = context[trend_feature]
+                volume_values = context[volume_feature]
+                trend_regime = pd.Series(index=context.index, dtype="object")
+                volume_regime = pd.Series(index=context.index, dtype="object")
+                trend_valid = trend_values.notna()
+                volume_valid = volume_values.notna()
+                trend_regime.loc[trend_valid & (trend_values > 0)] = "above_sma20"
+                trend_regime.loc[trend_valid & (trend_values <= 0)] = "below_or_at_sma20"
+                volume_regime.loc[volume_valid & (volume_values >= elevated_volume_threshold)] = "elevated_volume"
+                volume_regime.loc[volume_valid & (volume_values < elevated_volume_threshold)] = "normal_or_low_volume"
+                context_frame["__trend_regime"] = trend_regime
+                context_frame["__volume_regime"] = volume_regime
                 for trend_name in ("above_sma20", "below_or_at_sma20"):
                     for volume_name in ("elevated_volume", "normal_or_low_volume"):
                         subset = context_frame[
