@@ -1,11 +1,9 @@
 name: Python engine tests
-
 on:
   push:
-    branches: [main]
+    branches: [main, phase-8-2a-leakage-safe-outcomes]
   pull_request:
-    branches: [main]
-
+    branches: [main, phase-8-2a-leakage-safe-outcomes]
 jobs:
   test:
     runs-on: ubuntu-latest
