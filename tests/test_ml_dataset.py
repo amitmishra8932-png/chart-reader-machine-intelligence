@@ -96,6 +96,21 @@ class MlDatasetPreparationTests(unittest.TestCase):
         self.assertTrue(report["feature_columns"])
         self.assertIn("no model has been fitted", " ".join(report["limitations"]))
 
+    def test_ml_builder_rejects_blank_identity_and_missing_volume(self):
+        frame = sample_frame()
+        frame.loc[0, "symbol"] = " "
+        with self.assertRaisesRegex(ValueError, "symbol cannot be missing or blank"):
+            build_ml_dataset(frame, neutral_bands_pct={3: 0.1, 6: 0.2, 12: 0.3})
+        frame = sample_frame().drop(columns=["volume"])
+        with self.assertRaisesRegex(ValueError, "volume"):
+            build_ml_dataset(frame, neutral_bands_pct={3: 0.1, 6: 0.2, 12: 0.3})
+
+    def test_ml_builder_rejects_invalid_candle_geometry(self):
+        frame = sample_frame()
+        frame.loc[0, "high"] = frame.loc[0, "low"] - 1
+        with self.assertRaisesRegex(ValueError, "Invalid OHLC candle geometry"):
+            build_ml_dataset(frame, neutral_bands_pct={3: 0.1, 6: 0.2, 12: 0.3})
+
 
 if __name__ == "__main__":
     unittest.main()
