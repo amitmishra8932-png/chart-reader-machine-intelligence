@@ -1,11 +1,9 @@
 name: Python engine tests
-
 on:
   push:
-    branches: [main]
+    branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation]
   pull_request:
-    branches: [main]
-
+    branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation]
 jobs:
   test:
     runs-on: ubuntu-latest
