@@ -26,6 +26,8 @@ class PatternRegistryTests(unittest.TestCase):
             self.assertTrue(required.issubset(item))
             self.assertEqual(item["empirical_performance"], "not_tested")
         self.assertGreaterEqual(len(self.registry["references"]), 2)
+        self.assertEqual(sum(bool(item["detector_columns"]) for item in patterns), 22)
+        self.assertEqual(sum(not item["detector_columns"] for item in patterns), 4)
 
     def test_registry_detector_mapping_matches_actual_detector_outputs(self):
         sample = pd.DataFrame({
