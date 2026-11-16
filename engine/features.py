@@ -32,7 +32,7 @@ def _features_single(frame: pd.DataFrame) -> pd.DataFrame:
     df["feature_upper_wick_to_range"] = upper_wick / candle_range
     df["feature_lower_wick_to_range"] = lower_wick / candle_range
     df["feature_close_location"] = (close - low) / candle_range
-    df["feature_candle_direction"] = np.sign(body_signed).astype("int8")
+    df["feature_candle_direction"] = np.sign(body_signed.fillna(0)).astype("int8")
     df["feature_gap_pct"] = open_ / close.shift(1).replace(0, np.nan) - 1.0
 
     for period in (1, 3, 6, 12):
