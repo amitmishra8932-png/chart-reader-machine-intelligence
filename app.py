@@ -9,6 +9,8 @@ import streamlit as st
 from engine.data_loader import read_uploaded_csv
 from engine.indicators import add_indicators
 from engine.features import add_features
+from engine.ml_dataset import build_ml_dataset
+from engine.ml_pattern_context import analyze_pattern_context
 from engine.market_structure import add_market_structure
 from engine.outcomes import label_forward_returns, outcome_summary
 from engine.paper_trading import (
@@ -713,6 +715,149 @@ with research:
             data=data.to_csv(index=False).encode("utf-8"),
             file_name="chart_reader_analysis.csv",
             mime="text/csv",
+        )
+
+    st.divider()
+    st.markdown("### Phase 8.9 · Pattern contribution & context study")
+    st.caption(
+        "Separate validation-only research run using the Phase 8.9 ML dataset and analysis modules. "
+        "This upload is processed in the current Streamlit session and is not committed to GitHub."
+    )
+    st.warning(
+        "Use the raw OHLCV export with timestamp, symbol, timeframe, open, high, low, close and volume. "
+        "This study reports descriptive associations only; it does not generate buy/sell signals."
+    )
+    pattern_context_upload = st.file_uploader(
+        "Upload historical OHLCV CSV for Phase 8.9",
+        type=["csv"],
+        key="phase_8_9_context_csv",
+    )
+    pc1, pc2, pc3 = st.columns(3)
+    neutral_band = pc1.selectbox(
+        "Neutral band (%)", [0.10, 0.15, 0.20, 0.30], index=2,
+        key="phase_8_9_neutral_band",
+    )
+    horizons = pc2.multiselect(
+        "Forward horizons (candles)", [3, 6, 12], default=[3, 6, 12],
+        key="phase_8_9_horizons",
+    )
+    min_support = pc3.number_input(
+        "Minimum rows per comparison group", min_value=1, max_value=10000,
+        value=30, step=5, key="phase_8_9_min_support",
+    )
+    if st.button(
+        "Run Phase 8.9 validation study",
+        type="primary",
+        use_container_width=True,
+        disabled=(pattern_context_upload is None or not horizons),
+        key="run_phase_8_9_context",
+    ):
+        try:
+            with st.spinner("Building leakage-aware features and validation-only pattern comparisons..."):
+                pattern_context_upload.seek(0)
+                phase89_source = pd.read_csv(pattern_context_upload)
+                phase89_dataset, phase89_summary = build_ml_dataset(
+                    phase89_source,
+                    neutral_bands_pct={int(h): float(neutral_band) for h in horizons},
+                )
+                phase89_report = analyze_pattern_context(
+                    phase89_dataset,
+                    horizons=tuple(int(h) for h in horizons),
+                    min_support=int(min_support),
+                )
+                phase89_report["dataset_summary"] = phase89_summary
+                st.session_state["phase_8_9_context_report"] = phase89_report
+                st.session_state["phase_8_9_context_error"] = ""
+        except Exception as exc:
+            st.session_state["phase_8_9_context_error"] = str(exc)
+            st.session_state.pop("phase_8_9_context_report", None)
+
+    phase89_error = st.session_state.get("phase_8_9_context_error", "")
+    if phase89_error:
+        st.error(f"Phase 8.9 could not run: {phase89_error}")
+    phase89_report = st.session_state.get("phase_8_9_context_report")
+    if phase89_report:
+        st.success(
+            f"Completed validation-only study · {phase89_report['validation_rows']:,} validation rows · "
+            f"{len(phase89_report['pattern_columns'])} detected pattern features"
+        )
+        phase89_summary = phase89_report["dataset_summary"]
+        st.json(phase89_summary["splits"])
+        report_horizons = list(phase89_report["horizons"].keys())
+        selected_report_horizon = st.selectbox(
+            "Inspect horizon (candles)", report_horizons,
+            key="phase_8_9_report_horizon",
+        )
+        horizon_result = phase89_report["horizons"][selected_report_horizon]
+        pattern_rows = []
+        for pattern_name, item in horizon_result["patterns"].items():
+            overall = item["overall"]
+            rates = overall.get("pattern_class_rates", {})
+            differences = overall.get("rate_difference_pattern_minus_comparison", {})
+            pattern_rows.append({
+                "Pattern feature": pattern_name,
+                "Occurrences": item["occurrences"],
+                "Occurrence rate (%)": round(item["occurrence_rate"] * 100, 2),
+                "Eligible comparison": overall["eligible"],
+                "Up rate when present (%)": round(rates.get("1", float("nan")) * 100, 2) if rates else None,
+                "Neutral rate when present (%)": round(rates.get("0", float("nan")) * 100, 2) if rates else None,
+                "Down rate when present (%)": round(rates.get("-1", float("nan")) * 100, 2) if rates else None,
+                "Up-rate difference (pp)": round(differences.get("1", float("nan")) * 100, 2) if differences else None,
+            })
+        st.dataframe(
+            pd.DataFrame(pattern_rows).sort_values("Occurrences", ascending=False),
+            use_container_width=True, hide_index=True,
+        )
+        st.caption(
+            "Rate differences are pattern-present minus pattern-absent, in percentage points. "
+            "Ineligible comparisons lack the minimum support in at least one group."
+        )
+        with st.expander("Per-symbol and trend/volume context details"):
+            selected_pattern = st.selectbox(
+                "Pattern to inspect",
+                list(horizon_result["patterns"].keys()),
+                key="phase_8_9_selected_pattern",
+            )
+            selected_pattern_result = horizon_result["patterns"][selected_pattern]
+            symbol_rows = []
+            for symbol_name, comparison in selected_pattern_result["by_symbol"].items():
+                rates = comparison.get("pattern_class_rates", {})
+                symbol_rows.append({
+                    "Symbol": symbol_name,
+                    "Pattern rows": comparison["pattern_rows"],
+                    "Comparison rows": comparison["comparison_rows"],
+                    "Eligible": comparison["eligible"],
+                    "Up rate when present (%)": round(rates.get("1", float("nan")) * 100, 2) if rates else None,
+                })
+            st.markdown("**Per-symbol comparison**")
+            st.dataframe(pd.DataFrame(symbol_rows), use_container_width=True, hide_index=True)
+            context_rows = []
+            for context_name, comparison in selected_pattern_result["by_context"].items():
+                rates = comparison.get("pattern_class_rates", {})
+                context_rows.append({
+                    "Trend / volume context": context_name,
+                    "Pattern rows": comparison["pattern_rows"],
+                    "Comparison rows": comparison["comparison_rows"],
+                    "Eligible": comparison["eligible"],
+                    "Up rate when present (%)": round(rates.get("1", float("nan")) * 100, 2) if rates else None,
+                })
+            st.markdown("**Trend and volume interaction groups**")
+            if context_rows:
+                st.dataframe(pd.DataFrame(context_rows), use_container_width=True, hide_index=True)
+            else:
+                st.info("No rows have both trend and volume context available.")
+        st.download_button(
+            "Download Phase 8.9 JSON report",
+            data=json.dumps(phase89_report, indent=2, allow_nan=False).encode("utf-8"),
+            file_name="phase_8_9_pattern_context.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+        st.info(
+            "Research guardrails: only validation rows are used for outcome comparisons; "
+            "train/test outcomes are excluded; subgroups below minimum support are not ranked; "
+            "correlated pattern flags are not independent observations. No profitability or "
+            "trading-edge conclusion is produced."
         )
 
 st.divider()
