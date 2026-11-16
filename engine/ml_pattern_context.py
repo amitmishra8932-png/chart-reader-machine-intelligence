@@ -143,13 +143,15 @@ def analyze_pattern_context(
                     "elevated_volume": volume_values.ge(elevated_volume_threshold).fillna(False),
                     "normal_or_low_volume": volume_values.lt(elevated_volume_threshold).fillna(False),
                 }
-                for trend_name, trend_mask in trend_masks.items():
-                    for volume_name, volume_mask in volume_masks.items():
-                        subset = usable.loc[trend_mask & volume_mask]
-                        key = f"{trend_name}__{volume_name}"
-                        item["by_context"][key] = _comparison(
-                            subset, column, target, min_support
-                        )
+                valid_context = trend_values.notna() & volume_values.notna()
+                if valid_context.any():
+                    for trend_name, trend_mask in trend_masks.items():
+                        for volume_name, volume_mask in volume_masks.items():
+                            subset = usable.loc[valid_context & trend_mask & volume_mask]
+                            key = f"{trend_name}__{volume_name}"
+                            item["by_context"][key] = _comparison(
+                                subset, column, target, min_support
+                            )
             horizon_report["patterns"][column] = item
         report["horizons"][str(horizon)] = horizon_report
 
