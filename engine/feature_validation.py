@@ -150,11 +150,11 @@ def chronological_date_split(
     if len(dates) < 3:
         raise ValueError("At least three distinct dates are required")
 
-    train_end = max(1, int(len(dates) * train_fraction))
-    validation_end = max(train_end + 1, int(
-        len(dates) * (train_fraction + validation_fraction)
-    ))
-    validation_end = min(validation_end, len(dates) - 1)
+    train_end = max(1, min(len(dates) - 2, int(len(dates) * train_fraction)))
+    validation_end = max(
+        train_end + 1,
+        min(len(dates) - 1, int(len(dates) * (train_fraction + validation_fraction))),
+    )
 
     assignments = {
         **{date: "train" for date in dates[:train_end]},
