@@ -133,25 +133,19 @@ def analyze_pattern_context(
                 context = usable[[trend_feature, volume_feature]].apply(
                     pd.to_numeric, errors="coerce"
                 )
-                context_frame = usable.copy()
                 trend_values = context[trend_feature]
                 volume_values = context[volume_feature]
-                trend_regime = pd.Series(pd.NA, index=context.index, dtype="object")
-                volume_regime = pd.Series(index=context.index, dtype="object")
-                trend_valid = trend_values.notna()
-                volume_valid = volume_values.notna()
-                trend_regime.loc[trend_valid & (trend_values > 0)] = "above_sma20"
-                trend_regime.loc[trend_valid & (trend_values <= 0)] = "below_or_at_sma20"
-                volume_regime.loc[volume_valid & (volume_values >= elevated_volume_threshold)] = "elevated_volume"
-                volume_regime.loc[volume_valid & (volume_values < elevated_volume_threshold)] = "normal_or_low_volume"
-                context_frame["__trend_regime"] = trend_regime
-                context_frame["__volume_regime"] = volume_regime
-                for trend_name in ("above_sma20", "below_or_at_sma20"):
-                    for volume_name in ("elevated_volume", "normal_or_low_volume"):
-                        subset = context_frame[
-                            (context_frame["__trend_regime"] == trend_name)
-                            & (context_frame["__volume_regime"] == volume_name)
-                        ]
+                trend_masks = {
+                    "above_sma20": trend_values.gt(0).fillna(False),
+                    "below_or_at_sma20": trend_values.le(0).fillna(False),
+                }
+                volume_masks = {
+                    "elevated_volume": volume_values.ge(elevated_volume_threshold).fillna(False),
+                    "normal_or_low_volume": volume_values.lt(elevated_volume_threshold).fillna(False),
+                }
+                for trend_name, trend_mask in trend_masks.items():
+                    for volume_name, volume_mask in volume_masks.items():
+                        subset = usable.loc[trend_mask & volume_mask]
                         key = f"{trend_name}__{volume_name}"
                         item["by_context"][key] = _comparison(
                             subset, column, target, min_support
