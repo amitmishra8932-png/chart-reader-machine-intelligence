@@ -212,6 +212,10 @@ def detect_patterns(frame: pd.DataFrame) -> pd.DataFrame:
     else:
         groups = [work["__position"].to_numpy()]
 
+    position_column = "__chart_reader_internal_position__"
+    while position_column in frame.columns:
+        position_column += "_"
+
     pieces = []
     for positions in groups:
         if timestamp_order_available and "__timestamp_order" in work.columns:
@@ -224,11 +228,11 @@ def detect_patterns(frame: pd.DataFrame) -> pd.DataFrame:
             ordered_positions = positions
 
         detected = _detect_patterns_single(frame.iloc[ordered_positions].copy())
-        detected["__position"] = ordered_positions
+        detected[position_column] = ordered_positions
         pieces.append(detected)
 
     combined = pd.concat(pieces, axis=0)
-    combined = combined.sort_values("__position", kind="mergesort")
-    combined = combined.drop(columns="__position")
+    combined = combined.sort_values(position_column, kind="mergesort")
+    combined = combined.drop(columns=position_column)
     combined.index = frame.index
     return combined
