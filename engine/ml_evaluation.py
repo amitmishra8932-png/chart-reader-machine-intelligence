@@ -191,9 +191,12 @@ def evaluate_baseline_models(
 
         labelled_mask = frame[target_col].notna()
         y_numeric = pd.to_numeric(frame[target_col], errors="coerce")
-        if y_numeric[labelled_mask].isna().any():
-            raise ValueError(f"{target_col} contains non-numeric labels.")
-        if not set(y_numeric[labelled_mask].astype(int).unique()).issubset(set(CLASS_LABELS)):
+        observed_targets = y_numeric[labelled_mask]
+        if observed_targets.isna().any() or not np.isfinite(observed_targets.to_numpy(dtype=float)).all():
+            raise ValueError(f"{target_col} contains non-finite or non-numeric labels.")
+        if not np.equal(observed_targets.to_numpy(dtype=float), np.floor(observed_targets.to_numpy(dtype=float))).all():
+            raise ValueError(f"{target_col} must contain integer class labels; fractional labels are invalid.")
+        if not set(observed_targets.astype(int).unique()).issubset(set(CLASS_LABELS)):
             raise ValueError(f"{target_col} must contain only -1, 0 and +1.")
 
         horizon_report: dict[str, Any] = {
@@ -235,6 +238,7 @@ def evaluate_baseline_models(
             horizon_report["models"][model_name] = model_report
 
         horizon_report["training_rows"] = int(len(y_train))
+        horizon_report["preprocessing_fit_rows"] = int(len(x_train))
         horizon_report["training_classes"] = sorted(int(v) for v in np.unique(y_train))
         report["horizons"][str(horizon)] = horizon_report
 
