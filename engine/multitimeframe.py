@@ -93,6 +93,7 @@ def align_closed_higher_timeframe(
             for column in [f"{higher_prefix}timestamp", *rename.values()]:
                 merged[column] = pd.NA
             merged[f"{higher_prefix}available_at"] = pd.NaT
+            merged["__available_at"] = pd.NaT
         else:
             right_columns = [
                 "__available_at", f"{higher_prefix}timestamp", *rename.values()
