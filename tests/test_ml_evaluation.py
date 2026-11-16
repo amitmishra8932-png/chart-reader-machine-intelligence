@@ -80,6 +80,18 @@ class BaselineEvaluationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Missing target column"):
             evaluate_baseline_models(frame, horizons=(6,))
 
+    def test_rejects_fractional_target_labels(self):
+        frame = make_dataset()
+        frame.loc[frame.index[0], "target_3"] = 1.5
+        with self.assertRaisesRegex(ValueError, "fractional labels"):
+            evaluate_baseline_models(frame, horizons=(3,))
+
+    def test_rejects_infinite_target_labels(self):
+        frame = make_dataset()
+        frame.loc[frame.index[0], "target_3"] = np.inf
+        with self.assertRaisesRegex(ValueError, "non-finite"):
+            evaluate_baseline_models(frame, horizons=(3,))
+
 
 if __name__ == "__main__":
     unittest.main()
