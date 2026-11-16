@@ -11,6 +11,7 @@ from engine.indicators import add_indicators
 from engine.features import add_features
 from engine.ml_dataset import build_ml_dataset
 from engine.ml_pattern_context import analyze_pattern_context
+from engine.ml_cross_timeframe import analyze_cross_timeframe_robustness
 from engine.market_structure import add_market_structure
 from engine.outcomes import label_forward_returns, outcome_summary
 from engine.paper_trading import (
@@ -858,6 +859,136 @@ with research:
             "train/test outcomes are excluded; subgroups below minimum support are not ranked; "
             "correlated pattern flags are not independent observations. No profitability or "
             "trading-edge conclusion is produced."
+        )
+
+
+    st.divider()
+    st.markdown("### Phase 8.10 · Cross-timeframe robustness")
+    st.caption(
+        "Compare two Phase 8.9 JSON reports. This compares validation-level aggregates only; "
+        "it does not synchronize individual 5m and 15m candles."
+    )
+    st.warning(
+        "Upload one 5m report and one 15m report using the same neutral-band settings. "
+        "Unsupported comparisons remain unranked. Results are descriptive, not trading signals."
+    )
+    cross_5m_upload = st.file_uploader(
+        "Phase 8.9 report · 5-minute timeframe",
+        type=["json"],
+        key="phase_8_10_5m_json",
+    )
+    cross_15m_upload = st.file_uploader(
+        "Phase 8.9 report · 15-minute timeframe",
+        type=["json"],
+        key="phase_8_10_15m_json",
+    )
+    min_effect_pp = st.slider(
+        "Minimum directional effect to classify (percentage points)",
+        min_value=0.0, max_value=10.0, value=2.0, step=0.5,
+        key="phase_8_10_min_effect_pp",
+    )
+    if st.button(
+        "Run Phase 8.10 cross-timeframe study",
+        type="primary",
+        use_container_width=True,
+        disabled=(cross_5m_upload is None or cross_15m_upload is None),
+        key="run_phase_8_10_cross_timeframe",
+    ):
+        try:
+            report_5m = json.loads(cross_5m_upload.getvalue().decode("utf-8"))
+            report_15m = json.loads(cross_15m_upload.getvalue().decode("utf-8"))
+            cross_report = analyze_cross_timeframe_robustness(
+                report_5m, report_15m, min_effect_pp=float(min_effect_pp)
+            )
+            st.session_state["phase_8_10_cross_report"] = cross_report
+            st.session_state["phase_8_10_cross_error"] = ""
+        except Exception as exc:
+            st.session_state.pop("phase_8_10_cross_report", None)
+            st.session_state["phase_8_10_cross_error"] = str(exc)
+
+    cross_error = st.session_state.get("phase_8_10_cross_error", "")
+    if cross_error:
+        st.error(f"Phase 8.10 could not run: {cross_error}")
+    cross_report = st.session_state.get("phase_8_10_cross_report")
+    if cross_report:
+        st.success(
+            f"Completed aggregate comparison · {cross_report['common_symbol_count']} common symbols · "
+            f"{cross_report['common_pattern_count']} common patterns"
+        )
+        st.caption(
+            "Directional effect = change in (up-class rate minus down-class rate) for pattern-present "
+            "versus pattern-absent rows. Same direction is not evidence of predictive skill."
+        )
+        selected_cross_horizon = st.selectbox(
+            "Cross-timeframe horizon (candles)",
+            list(cross_report["horizons"].keys()),
+            key="phase_8_10_horizon",
+        )
+        cross_patterns = cross_report["horizons"][selected_cross_horizon]["patterns"]
+        cross_rows = []
+        for pattern_name, item in cross_patterns.items():
+            overall = item["overall"]
+            cross_rows.append({
+                "Pattern": pattern_name,
+                "5m effect (pp)": overall["5m"]["effect_pp"],
+                "5m direction": overall["5m"]["direction"],
+                "15m effect (pp)": overall["15m"]["effect_pp"],
+                "15m direction": overall["15m"]["direction"],
+                "Cross-timeframe status": overall["status"],
+                "Eligible common symbols": item["per_symbol"]["eligible_common_symbols"],
+                "Same-direction symbols": item["per_symbol"]["same_direction_symbols"],
+            })
+        cross_table = pd.DataFrame(cross_rows)
+        if not cross_table.empty:
+            st.dataframe(
+                cross_table.sort_values(
+                    ["Cross-timeframe status", "Same-direction symbols"],
+                    ascending=[True, False],
+                ),
+                use_container_width=True, hide_index=True,
+            )
+        with st.expander("Inspect per-pattern context and symbol details"):
+            selected_cross_pattern = st.selectbox(
+                "Pattern",
+                list(cross_patterns),
+                key="phase_8_10_selected_pattern",
+            )
+            selected_cross = cross_patterns[selected_cross_pattern]
+            st.markdown("**Per-symbol cross-timeframe comparisons**")
+            symbol_rows = []
+            for symbol_name, pair in selected_cross["per_symbol"]["comparisons"].items():
+                symbol_rows.append({
+                    "Symbol": symbol_name,
+                    "5m direction": pair["5m"]["direction"],
+                    "15m direction": pair["15m"]["direction"],
+                    "Status": pair["status"],
+                })
+            st.dataframe(pd.DataFrame(symbol_rows), use_container_width=True, hide_index=True)
+            st.markdown("**Trend / volume context comparisons**")
+            context_rows = [
+                {
+                    "Context": context_name,
+                    "5m direction": pair["5m"]["direction"],
+                    "15m direction": pair["15m"]["direction"],
+                    "Status": pair["status"],
+                }
+                for context_name, pair in selected_cross["by_context"].items()
+            ]
+            if context_rows:
+                st.dataframe(pd.DataFrame(context_rows), use_container_width=True, hide_index=True)
+            else:
+                st.info("No shared trend/volume context groups are available.")
+        st.download_button(
+            "Download Phase 8.10 JSON report",
+            data=json.dumps(cross_report, indent=2, allow_nan=False).encode("utf-8"),
+            file_name="phase_8_10_cross_timeframe.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+        st.info(
+            "Research-only: reports compare validation aggregates, not matched candle events. "
+            "Short history, sparse pattern counts and correlated observations limit conclusions. "
+            "No pattern is promoted to a live signal."
         )
 
 st.divider()
