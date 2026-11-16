@@ -6,6 +6,7 @@ import pandas as pd
 
 from engine.ml_dataset import build_ml_dataset
 from engine.ml_targets import add_directional_targets
+from engine.patterns import detect_patterns
 
 
 def sample_frame():
@@ -94,7 +95,33 @@ class MlDatasetPreparationTests(unittest.TestCase):
         self.assertTrue({"train", "validation", "test"}.issubset(set(result["validation_split"])))
         self.assertEqual(report["rows"], len(result))
         self.assertTrue(report["feature_columns"])
+        expected_pattern_features = {
+            "feature_pattern_doji",
+            "feature_pattern_bullish_engulfing",
+            "feature_pattern_morning_star",
+            "feature_pattern_three_white_soldiers",
+        }
+        self.assertTrue(expected_pattern_features.issubset(result.columns))
+        self.assertEqual(report["pattern_feature_count"], 23)
+        self.assertTrue(
+            set(np.unique(result[list(expected_pattern_features)].to_numpy())).issubset({0, 1})
+        )
         self.assertIn("no model has been fitted", " ".join(report["limitations"]))
+
+    def test_pattern_detectors_do_not_use_future_candles(self):
+        frame = sample_frame()
+        changed = frame.copy()
+        changed.loc[28:, ["open", "high", "low", "close", "volume"]] *= 1.7
+
+        original_patterns = detect_patterns(frame)
+        changed_patterns = detect_patterns(changed)
+        columns = [column for column in original_patterns if column.startswith("pattern_")]
+        pd.testing.assert_frame_equal(
+            original_patterns.loc[:27, columns],
+            changed_patterns.loc[:27, columns],
+            check_dtype=False,
+            check_exact=True,
+        )
 
     def test_ml_builder_rejects_blank_identity_and_missing_volume(self):
         frame = sample_frame()
