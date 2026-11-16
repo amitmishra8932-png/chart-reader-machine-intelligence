@@ -28,7 +28,9 @@ def audit_ohlcv_dataset(frame: pd.DataFrame) -> dict[str, Any]:
         numeric["low"] > numeric[["open", "close", "high"]].min(axis=1)
     ) | numeric[list(OHLC)].le(0).any(axis=1)
 
-    duplicate_keys = data.duplicated(
+    normalized_keys = data.loc[:, ["symbol", "timeframe"]].copy()
+    normalized_keys["timestamp"] = timestamps
+    duplicate_keys = normalized_keys.duplicated(
         ["symbol", "timeframe", "timestamp"], keep=False
     )
     rows_by_group = (
@@ -116,13 +118,13 @@ def feature_distribution_report(
             "rows": int(len(values)),
             "valid": int(len(finite)),
             "missing_or_nonfinite": int(len(values) - len(finite)),
-            "mean": float(finite.mean()) if len(finite) else float("nan"),
-            "std": float(finite.std()) if len(finite) > 1 else float("nan"),
-            "min": float(finite.min()) if len(finite) else float("nan"),
-            "p01": float(finite.quantile(0.01)) if len(finite) else float("nan"),
-            "median": float(finite.median()) if len(finite) else float("nan"),
-            "p99": float(finite.quantile(0.99)) if len(finite) else float("nan"),
-            "max": float(finite.max()) if len(finite) else float("nan"),
+            "mean": float(finite.mean()) if len(finite) else None,
+            "std": float(finite.std()) if len(finite) > 1 else None,
+            "min": float(finite.min()) if len(finite) else None,
+            "p01": float(finite.quantile(0.01)) if len(finite) else None,
+            "median": float(finite.median()) if len(finite) else None,
+            "p99": float(finite.quantile(0.99)) if len(finite) else None,
+            "max": float(finite.max()) if len(finite) else None,
         }
     return report
 
@@ -177,7 +179,7 @@ def build_feature_validation_report(
     dates = pd.to_datetime(split["timestamp"]).dt.strftime("%Y-%m-%d")
     split_summary = {}
     for name, group in split.groupby("validation_split", sort=False):
-        group_dates = dates.loc[group.index]
+        group_dates = pd.to_datetime(group["timestamp"]).dt.strftime("%Y-%m-%d")
         split_summary[str(name)] = {
             "rows": int(len(group)),
             "sessions": int(group_dates.nunique()),
