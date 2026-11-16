@@ -72,6 +72,7 @@ class DirectionalTargetTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Duplicate"):
             add_directional_targets(duplicate, neutral_bands_pct={1: 0.2})
         invalid = frame.copy()
+        invalid["timestamp"] = invalid["timestamp"].astype(object)
         invalid.loc[0, "timestamp"] = "not-a-date"
         with self.assertRaisesRegex(ValueError, "parseable"):
             add_directional_targets(invalid, neutral_bands_pct={1: 0.2})
