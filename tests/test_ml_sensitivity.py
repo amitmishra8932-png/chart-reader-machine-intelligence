@@ -67,7 +67,7 @@ class NeutralBandSensitivityTests(unittest.TestCase):
         with patch("engine.ml_sensitivity.build_ml_dataset", side_effect=fake_dataset), \
              patch("engine.ml_sensitivity.evaluate_feature_ablations") as evaluate:
             evaluate.side_effect = [
-                fake_ablation(None),
+                fake_ablation(None, horizons=(3, 6, 12)),
                 {
                     "results": {"all_features": {"splits": {"train": {"rows": 99}}}},
                     "logistic_minus_majority_deltas": {},
