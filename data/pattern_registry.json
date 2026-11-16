@@ -36,7 +36,10 @@
       "caveat": "Small bodies are common in low-volatility or illiquid periods. A doji alone is not a reversal signal.",
       "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_doji"
+      ]
     },
     {
       "id": "long_legged_doji",
@@ -48,9 +51,12 @@
       "context": "Prior trend, session volatility, close location and next-candle range break.",
       "failure": "A break in the direction opposite the proposed reversal.",
       "caveat": "Long shadows can be caused by news or thin liquidity.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_long_legged_doji"
+      ]
     },
     {
       "id": "dragonfly_doji",
@@ -62,9 +68,12 @@
       "context": "Downtrend, support, close near high and subsequent higher close.",
       "failure": "A move below the candle low weakens the bullish rejection interpretation.",
       "caveat": "The textbook label does not guarantee a bullish outcome.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_dragonfly_doji"
+      ]
     },
     {
       "id": "gravestone_doji",
@@ -76,9 +85,12 @@
       "context": "Prior uptrend, resistance, close near low and subsequent lower close.",
       "failure": "A move above the candle high weakens the bearish rejection interpretation.",
       "caveat": "Context and confirmation are essential.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_gravestone_doji"
+      ]
     },
     {
       "id": "hammer",
@@ -92,7 +104,10 @@
       "caveat": "The same shape in an uptrend is not automatically a hammer signal.",
       "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_hammer"
+      ]
     },
     {
       "id": "hanging_man",
@@ -104,9 +119,12 @@
       "context": "Prior advance, resistance, next-candle weakness and volume context.",
       "failure": "A strong move above the high weakens the bearish warning.",
       "caveat": "Geometry resembles a hammer; trend context changes the interpretation.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_hanging_man"
+      ]
     },
     {
       "id": "inverted_hammer",
@@ -118,9 +136,12 @@
       "context": "Prior decline, support and a later close above the pattern high.",
       "failure": "A break below the pattern low before confirmation weakens the setup.",
       "caveat": "The long upper shadow also shows rejection; confirmation matters.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_inverted_hammer"
+      ]
     },
     {
       "id": "shooting_star",
@@ -134,7 +155,10 @@
       "caveat": "The same geometry in a downtrend is not automatically a shooting star.",
       "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_shooting_star"
+      ]
     },
     {
       "id": "bullish_engulfing",
@@ -148,7 +172,10 @@
       "caveat": "Body-engulfing does not require engulfing the full high-low range.",
       "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_bullish_engulfing"
+      ]
     },
     {
       "id": "bearish_engulfing",
@@ -162,7 +189,10 @@
       "caveat": "Body-engulfing does not require engulfing full shadows.",
       "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_bearish_engulfing"
+      ]
     },
     {
       "id": "piercing_line",
@@ -174,9 +204,12 @@
       "context": "Prior decline, support, recovery depth and next-candle follow-through.",
       "failure": "A break below the two-candle low weakens the reversal attempt.",
       "caveat": "Opening-gap requirements can be awkward for intraday markets.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_piercing_line"
+      ]
     },
     {
       "id": "dark_cloud_cover",
@@ -188,9 +221,12 @@
       "context": "Prior advance, resistance, penetration depth and follow-through.",
       "failure": "A break above the two-candle high weakens the bearish attempt.",
       "caveat": "Opening-gap conventions vary and may be less useful intraday.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_dark_cloud_cover"
+      ]
     },
     {
       "id": "bullish_harami",
@@ -204,7 +240,8 @@
       "caveat": "Inside-body relationship is a pause signal; confirmation is needed.",
       "implemented": false,
       "detector_status": "catalogued_not_implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": []
     },
     {
       "id": "bearish_harami",
@@ -218,7 +255,8 @@
       "caveat": "Can occur frequently in sideways markets.",
       "implemented": false,
       "detector_status": "catalogued_not_implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": []
     },
     {
       "id": "morning_star",
@@ -230,9 +268,12 @@
       "context": "Prior decline, support, third-candle close depth and volume.",
       "failure": "A break below the three-candle low weakens the bullish thesis.",
       "caveat": "Gap rules are market-dependent; intraday variants need explicit definitions.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_morning_star"
+      ]
     },
     {
       "id": "evening_star",
@@ -244,9 +285,12 @@
       "context": "Prior advance, resistance, third-candle close depth and volume.",
       "failure": "A break above the three-candle high weakens the bearish thesis.",
       "caveat": "Gap rules are market-dependent; intraday variants need explicit definitions.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_evening_star"
+      ]
     },
     {
       "id": "tweezer_bottom",
@@ -258,9 +302,12 @@
       "context": "Prior decline, ATR/tick-size tolerance, support and upside confirmation.",
       "failure": "A clean close below the repeated-low zone invalidates the rejection idea.",
       "caveat": "Equal lows need a tolerance rule; exact equality is too strict.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_tweezer_bottom"
+      ]
     },
     {
       "id": "tweezer_top",
@@ -272,9 +319,12 @@
       "context": "Prior advance, ATR/tick-size tolerance, resistance and downside confirmation.",
       "failure": "A clean close above the repeated-high zone invalidates the rejection idea.",
       "caveat": "Equal highs need a tolerance rule; exact equality is too strict.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_tweezer_top"
+      ]
     },
     {
       "id": "inside_bar",
@@ -288,7 +338,10 @@
       "caveat": "A volatility/compression structure, not inherently bullish or bearish.",
       "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_inside_bar"
+      ]
     },
     {
       "id": "outside_bar",
@@ -300,9 +353,12 @@
       "context": "Close location within range, trend, relative volume and follow-through.",
       "failure": "A close near the opposite end or immediate range re-entry undermines directional read.",
       "caveat": "Direction cannot be inferred from range expansion alone.",
-      "implemented": false,
-      "detector_status": "catalogued_not_implemented",
-      "empirical_performance": "not_tested"
+      "implemented": true,
+      "detector_status": "implemented",
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_outside_bar"
+      ]
     },
     {
       "id": "rising_three_methods",
@@ -316,7 +372,8 @@
       "caveat": "Textbook variants differ in candle count and containment rules.",
       "implemented": false,
       "detector_status": "catalogued_not_implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": []
     },
     {
       "id": "falling_three_methods",
@@ -330,7 +387,8 @@
       "caveat": "Textbook variants differ in candle count and containment rules.",
       "implemented": false,
       "detector_status": "catalogued_not_implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": []
     },
     {
       "id": "marubozu",
@@ -342,9 +400,13 @@
       "context": "Body/range ratio, relative volume, trend alignment and nearby levels.",
       "failure": "Rapid retracement through the body suggests the impulse did not persist.",
       "caveat": "Large candles can mark exhaustion, news shocks or late entries.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_bullish_marubozu",
+        "pattern_bearish_marubozu"
+      ]
     },
     {
       "id": "spinning_top",
@@ -356,9 +418,12 @@
       "context": "Prior move, location, range versus ATR and following candle.",
       "failure": "Breakout in prior trend without hesitation may make pause interpretation irrelevant.",
       "caveat": "Common in choppy markets; avoid over-counting.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_spinning_top"
+      ]
     },
     {
       "id": "three_white_soldiers",
@@ -370,9 +435,12 @@
       "context": "Prior trend, candle-size progression, volume and distance from resistance.",
       "failure": "Sharp retracement below sequence base undermines momentum interpretation.",
       "caveat": "After an extended advance it may be late-stage strength.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_three_white_soldiers"
+      ]
     },
     {
       "id": "three_black_crows",
@@ -384,9 +452,12 @@
       "context": "Prior trend, candle-size progression, volume and distance from support.",
       "failure": "Sharp recovery above sequence base undermines bearish interpretation.",
       "caveat": "After an extended decline it may be late-stage weakness.",
-      "implemented": false,
+      "implemented": true,
       "detector_status": "implemented",
-      "empirical_performance": "not_tested"
+      "empirical_performance": "not_tested",
+      "detector_columns": [
+        "pattern_three_black_crows"
+      ]
     }
   ]
 }
