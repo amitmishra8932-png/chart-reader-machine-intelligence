@@ -9,7 +9,7 @@
 
 The audited `main` branch is an explainable, deterministic OHLCV analysis application. It does **not** contain a verifiable trained machine-learning training pipeline, saved model artifact, or model-inference pipeline.
 
-This is a finding about the inspected repository and baseline only. It does not prove that model training never occurred in earlier V3/V3.1 deployments, another repository, an unmerged branch, a local workspace, or a separate training environment.
+The user clarified that the earlier Chart Reader V3 was **not ML-trained**. This resolves the historical V3 training question for the project as currently understood; there is no prior trained V3 model to recover. The separate **Amit AI Scanner V3.1** is a different project and must not be conflated with Chart Reader.
 
 ## What is implemented in this repository
 
@@ -75,20 +75,20 @@ These are rule-based chart-structure descriptions. They are not a learned chart-
 
 The connected private repository `amitmishra8932-png/amit-ai-intraday-scanner` was checked only as a possible source of related work. Its README describes heuristic screening scores and its dependencies do not show a chart-pattern ML stack. It is a separate intraday scanner and does not establish the provenance of earlier Chart Reader V3 training.
 
-## Required reconciliation before Phase 8.2
+## Required work before a new ML phase
 
-1. Locate the earlier V3 / V3.1 Chart Reader source, training notebooks, model artefacts, and training datasets, if they still exist.
-2. Identify the exact model family, feature inputs, target labels, training date range, validation split, and saved model version.
-3. Verify that inference on unseen candles actually loads the saved model rather than calling deterministic pattern rules.
-4. Reconcile the 26-entry registry with the 23 detector columns and correct metadata in a separate reviewed change.
-5. Measure chart-pattern intelligence alone, indicator filters alone, and their combination using chronological, leakage-safe out-of-sample evaluation.
-6. Do not claim ML capability or predictive edge until reproducible artefacts and evaluation results support it.
+1. Reconcile the 26-entry registry with the 23 detector columns and correct metadata in a separate reviewed change.
+2. Build a reproducible, leakage-safe historical dataset from validated OHLCV candles.
+3. Define explicit prediction targets and forward horizons before training; keep chart-pattern labels distinct from market-condition filters.
+4. Split data chronologically by date and prevent overlapping forward-label windows from crossing split boundaries.
+5. Establish simple rule-based and statistical baselines before fitting an ML model.
+6. Evaluate out-of-sample performance, calibration, sample counts, and realistic transaction-cost sensitivity. Do not claim predictive edge until results are reproducible.
 
 ## Current disposition
 
 **Repository static audit: complete.**  
-**Historical V3 training provenance: pending source/artifact recovery.**  
+**Historical V3 training provenance: resolved — user confirms V3 was not ML-trained.**  
 **Registry reconciliation: identified, not changed in this audit.**  
-**Phase 8.2: hold until the historical ML question and registry mismatch are resolved.**
+**New Chart Reader ML phase: not started; begin only after registry reconciliation and dataset/label design.**
 
 No broker order functionality was added. No credentials or tokens were accessed or committed. No production code was changed by this audit.
