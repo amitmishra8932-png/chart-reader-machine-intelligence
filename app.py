@@ -8,6 +8,7 @@ import streamlit as st
 
 from engine.data_loader import read_uploaded_csv
 from engine.indicators import add_indicators
+from engine.features import add_features
 from engine.market_structure import add_market_structure
 from engine.outcomes import label_forward_returns, outcome_summary
 from engine.paper_trading import (
@@ -89,7 +90,7 @@ error = None
 if uploaded is not None:
     try:
         raw = read_uploaded_csv(uploaded)
-        data = add_market_structure(detect_patterns(add_indicators(raw)))
+        data = add_features(add_market_structure(detect_patterns(add_indicators(raw))))
         data = label_forward_returns(data, horizons=(3, 6, 12))
     except ValueError as exc:
         error = str(exc)
@@ -191,6 +192,25 @@ with intelligence:
         else:
             st.dataframe(patterns, use_container_width=True, hide_index=True)
         st.caption("Patterns are descriptive candle shapes, not standalone buy/sell signals.")
+
+        st.markdown("#### Engineered market features")
+        feature_columns = [
+            "feature_body_to_range", "feature_upper_wick_to_range",
+            "feature_lower_wick_to_range", "feature_close_location",
+            "feature_range_atr", "feature_relative_volume_20",
+            "feature_return_3", "feature_return_6",
+            "feature_sma_20_distance_pct", "feature_ema_20_distance_pct",
+            "feature_distance_to_confirmed_swing_high_pct",
+            "feature_distance_to_confirmed_swing_low_pct",
+        ]
+        available_features = [column for column in feature_columns if column in data.columns]
+        latest_features = data.loc[:, ["timestamp"] + available_features].tail(10)
+        st.dataframe(latest_features, use_container_width=True, hide_index=True)
+        st.caption(
+            "Feature values are descriptive inputs for future model research, not predictions. "
+            "Relative volume compares the current candle with prior candles only; "
+            "cross-timeframe feature alignment is intentionally not enabled yet."
+        )
 
 
 with structure_tab:
