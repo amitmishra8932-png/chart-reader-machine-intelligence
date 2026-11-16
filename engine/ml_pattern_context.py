@@ -136,7 +136,7 @@ def analyze_pattern_context(
                 context_frame = usable.copy()
                 trend_values = context[trend_feature]
                 volume_values = context[volume_feature]
-                trend_regime = pd.Series(index=context.index, dtype="object")
+                trend_regime = pd.Series(pd.NA, index=context.index, dtype="object")
                 volume_regime = pd.Series(index=context.index, dtype="object")
                 trend_valid = trend_values.notna()
                 volume_valid = volume_values.notna()
