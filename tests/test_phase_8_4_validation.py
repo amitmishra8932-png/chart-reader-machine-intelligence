@@ -70,6 +70,7 @@ class FeatureValidationTests(unittest.TestCase):
 
     def test_date_split_rejects_invalid_timestamps(self):
         frame = self.data()
+        frame["timestamp"] = frame["timestamp"].astype("object")
         frame.loc[0, "timestamp"] = "not-a-date"
         with self.assertRaisesRegex(ValueError, "Invalid timestamps"):
             chronological_date_split(frame)
