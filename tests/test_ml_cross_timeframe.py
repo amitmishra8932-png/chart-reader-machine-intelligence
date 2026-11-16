@@ -48,6 +48,16 @@ class CrossTimeframeTests(unittest.TestCase):
         hammer = result["horizons"]["3"]["patterns"]["feature_pattern_hammer"]
         self.assertEqual(hammer["overall"]["status"], "direction_conflict")
 
+    def test_weak_direction_is_not_mislabeled_as_conflict(self):
+        five, fifteen = make_report("5m"), make_report("15m")
+        comparison = fifteen["horizons"]["3"]["patterns"]["feature_pattern_hammer"]["overall"]
+        comparison["rate_difference_pattern_minus_comparison"] = {
+            "-1": 0.0, "0": 0.0, "1": 0.0
+        }
+        result = analyze_cross_timeframe_robustness(five, fifteen)
+        hammer = result["horizons"]["3"]["patterns"]["feature_pattern_hammer"]
+        self.assertEqual(hammer["overall"]["status"], "no_clear_direction")
+
     def test_insufficient_support_is_not_ranked(self):
         five, fifteen = make_report("5m"), make_report("15m")
         five["horizons"]["3"]["patterns"]["feature_pattern_hammer"]["overall"]["eligible"] = False
