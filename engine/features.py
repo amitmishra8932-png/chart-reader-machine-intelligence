@@ -60,13 +60,6 @@ def _features_single(frame: pd.DataFrame) -> pd.DataFrame:
         (volume - prior_volume_mean) / prior_volume_std.replace(0, np.nan)
     )
 
-    for period in (20, 50):
-        average = close.rolling(period, min_periods=period).mean()
-        df[f"feature_sma_{period}_distance_pct"] = close / average.replace(0, np.nan) - 1.0
-    for period in (20, 50):
-        average = close.ewm(span=period, adjust=False, min_periods=period).mean()
-        df[f"feature_ema_{period}_distance_pct"] = close / average.replace(0, np.nan) - 1.0
-
     # Confirmed swing levels are forward-filled only after their confirmation row.
     if "swing_high_confirmed" in df.columns:
         active_high = pd.to_numeric(df["swing_high_confirmed"], errors="coerce").ffill()
@@ -143,6 +136,49 @@ def add_features(frame: pd.DataFrame) -> pd.DataFrame:
         pieces.append(calculated)
 
     result = pd.concat(pieces, axis=0).sort_values(position_column, kind="mergesort")
+
+    # Long-horizon trend context intentionally spans prior sessions for the
+    # same instrument/timeframe. Session-sensitive returns, ATR and volume
+    # baselines remain isolated above.
+    series_group_columns = [
+        column for column in ("symbol", "timeframe") if column in work.columns
+    ]
+    if series_group_columns:
+        series_groups = [
+            group["__position"].to_numpy()
+            for _, group in work.groupby(
+                series_group_columns, dropna=False, sort=False
+            )
+        ]
+    else:
+        series_groups = [work["__position"].to_numpy()]
+
+    trend_values = {
+        f"feature_{kind}_{period}_distance_pct": np.full(len(frame), np.nan)
+        for kind in ("sma", "ema") for period in (20, 50)
+    }
+    for positions in series_groups:
+        if has_datetime_order:
+            ordered = (
+                work.loc[work["__position"].isin(positions)]
+                .sort_values("__timestamp_order", kind="mergesort")["__position"]
+                .to_numpy()
+            )
+        else:
+            ordered = positions
+        close = pd.to_numeric(frame.iloc[ordered]["close"], errors="coerce")
+        for period in (20, 50):
+            sma = close.rolling(period, min_periods=period).mean()
+            ema = close.ewm(span=period, adjust=False, min_periods=period).mean()
+            trend_values[f"feature_sma_{period}_distance_pct"][ordered] = (
+                close.to_numpy() / sma.replace(0, np.nan).to_numpy() - 1.0
+            )
+            trend_values[f"feature_ema_{period}_distance_pct"][ordered] = (
+                close.to_numpy() / ema.replace(0, np.nan).to_numpy() - 1.0
+            )
+
     result = result.drop(columns=position_column)
+    for column, values in trend_values.items():
+        result[column] = values
     result.index = frame.index
     return result
