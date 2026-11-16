@@ -168,6 +168,64 @@ class PatternAndOutcomeEdgeCaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "positive integers"):
             label_forward_returns(pd.DataFrame({"close": [1.0, 2.0]}), horizons=(0,))
 
+    def test_forward_returns_do_not_cross_symbol_boundaries(self):
+        frame = pd.DataFrame({
+            "timestamp": pd.to_datetime([
+                "2026-01-05 09:15", "2026-01-05 09:15",
+                "2026-01-05 09:20", "2026-01-05 09:20",
+            ]),
+            "symbol": ["AAA", "BBB", "AAA", "BBB"],
+            "timeframe": ["5m", "5m", "5m", "5m"],
+            "close": [100.0, 200.0, 110.0, 180.0],
+        })
+        result = label_forward_returns(frame, horizons=(1,))
+        self.assertAlmostEqual(result.loc[0, "forward_return_1"], 10.0)
+        self.assertAlmostEqual(result.loc[1, "forward_return_1"], -10.0)
+        self.assertTrue(result["forward_return_1"].iloc[2:].isna().all())
+
+    def test_forward_returns_do_not_cross_timeframe_boundaries(self):
+        frame = pd.DataFrame({
+            "timestamp": pd.to_datetime([
+                "2026-01-05 09:15", "2026-01-05 09:15",
+                "2026-01-05 09:20", "2026-01-05 09:30",
+            ]),
+            "symbol": ["AAA"] * 4,
+            "timeframe": ["5m", "15m", "5m", "15m"],
+            "close": [100.0, 200.0, 105.0, 220.0],
+        })
+        result = label_forward_returns(frame, horizons=(1,))
+        self.assertAlmostEqual(result.loc[0, "forward_return_1"], 5.0)
+        self.assertAlmostEqual(result.loc[1, "forward_return_1"], 10.0)
+        self.assertTrue(result["forward_return_1"].iloc[2:].isna().all())
+
+    def test_forward_returns_do_not_cross_trading_dates(self):
+        frame = pd.DataFrame({
+            "timestamp": pd.to_datetime([
+                "2026-01-05 15:15", "2026-01-06 09:15",
+            ]),
+            "close": [100.0, 150.0],
+        })
+        result = label_forward_returns(frame, horizons=(1,))
+        self.assertTrue(result["forward_return_1"].isna().all())
+
+    def test_grouped_forward_returns_sort_chronologically_but_preserve_input_order(self):
+        frame = pd.DataFrame({
+            "timestamp": pd.to_datetime([
+                "2026-01-05 09:20", "2026-01-05 09:15",
+            ]),
+            "symbol": ["AAA", "AAA"],
+            "timeframe": ["5m", "5m"],
+            "close": [110.0, 100.0],
+        }, index=[8, 3])
+        result = label_forward_returns(frame, horizons=(1,))
+        self.assertEqual(result.index.tolist(), [8, 3])
+        self.assertTrue(pd.isna(result.loc[8, "forward_return_1"]))
+        self.assertAlmostEqual(result.loc[3, "forward_return_1"], 10.0)
+
+    def test_fractional_horizon_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "positive integers"):
+            label_forward_returns(pd.DataFrame({"close": [1.0, 2.0]}), horizons=(1.5,))
+
     def test_empty_pattern_sample_returns_zero_observations(self):
         frame = pd.DataFrame({
             "pattern_doji": [False, False, False],

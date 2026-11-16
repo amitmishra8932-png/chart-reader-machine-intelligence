@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 
-def detect_patterns(frame: pd.DataFrame) -> pd.DataFrame:
+def _detect_patterns_single(frame: pd.DataFrame) -> pd.DataFrame:
     df = frame.copy()
     o, h, l, c = df["open"], df["high"], df["low"], df["close"]
     body = (c - o).abs()
@@ -168,3 +168,71 @@ def detect_patterns(frame: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     )
     return df
+
+
+
+def detect_patterns(frame: pd.DataFrame) -> pd.DataFrame:
+    """Detect patterns independently per instrument, timeframe, and session.
+
+    Multi-series inputs are partitioned before any rolling/shift-based detector
+    logic runs. If timestamps are available, each partition is processed in
+    chronological order within its calendar date. The returned rows retain the
+    caller's original order and index. Inputs without metadata keep the original
+    single-series behaviour.
+    """
+    if frame.empty:
+        return _detect_patterns_single(frame.copy())
+
+    work = pd.DataFrame({"__position": np.arange(len(frame), dtype=np.int64)})
+    group_columns = []
+    for column in ("symbol", "timeframe"):
+        if column in frame.columns:
+            work[column] = frame[column].to_numpy()
+            group_columns.append(column)
+
+    timestamp_order_available = False
+    if "timestamp" in frame.columns and not pd.api.types.is_numeric_dtype(frame["timestamp"]):
+        parsed = pd.to_datetime(frame["timestamp"], errors="coerce", utc=True)
+        if parsed.notna().any():
+            timestamp_order_available = True
+            work["__timestamp_order"] = parsed.to_numpy()
+            session_dates = parsed.dt.strftime("%Y-%m-%d")
+            # Invalid timestamps are isolated row-by-row: their session is unknown.
+            work["__session_date"] = [
+                value if pd.notna(value) else f"__invalid_timestamp_{position}"
+                for position, value in enumerate(session_dates)
+            ]
+            group_columns.append("__session_date")
+
+    if group_columns:
+        groups = (
+            group["__position"].to_numpy()
+            for _, group in work.groupby(group_columns, dropna=False, sort=False)
+        )
+    else:
+        groups = [work["__position"].to_numpy()]
+
+    position_column = "__chart_reader_internal_position__"
+    while position_column in frame.columns:
+        position_column += "_"
+
+    pieces = []
+    for positions in groups:
+        if timestamp_order_available and "__timestamp_order" in work.columns:
+            ordered_positions = (
+                work.loc[work["__position"].isin(positions)]
+                .sort_values("__timestamp_order", kind="mergesort")["__position"]
+                .to_numpy()
+            )
+        else:
+            ordered_positions = positions
+
+        detected = _detect_patterns_single(frame.iloc[ordered_positions].copy())
+        detected[position_column] = ordered_positions
+        pieces.append(detected)
+
+    combined = pd.concat(pieces, axis=0)
+    combined = combined.sort_values(position_column, kind="mergesort")
+    combined = combined.drop(columns=position_column)
+    combined.index = frame.index
+    return combined
