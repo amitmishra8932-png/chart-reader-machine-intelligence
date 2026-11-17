@@ -74,6 +74,10 @@ with st.sidebar:
         if st.session_state["fivepaisa_access_token"]:
             st.success("Authenticated for this session")
             if st.button("Clear 5paisa session"):
+                live_runtime = st.session_state.get("fivepaisa_live_runtime")
+                if live_runtime and live_runtime.get("feed"):
+                    live_runtime["feed"].stop()
+                st.session_state["fivepaisa_live_runtime"] = None
                 st.session_state["fivepaisa_access_token"] = ""
                 st.session_state["fivepaisa_client_code"] = ""
                 st.rerun()
