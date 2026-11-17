@@ -288,6 +288,33 @@ def validate_phase_8_19_manifest(manifest: dict[str, Any]) -> None:
                 f"manifest contains {value}%. Do not rerun until the protocol is reconciled."
             )
 
+    expected_splits = {
+        "train": ("2026-05-19", "2026-07-09", 36),
+        "validation": ("2026-07-10", "2026-07-21", 8),
+        "test": ("2026-07-22", "2026-07-31", 8),
+    }
+    splits = manifest.get("splits")
+    if not isinstance(splits, dict):
+        raise ValueError("Phase 8.13 manifest must include chronological split metadata.")
+    for name, (first_date, last_date, sessions) in expected_splits.items():
+        item = splits.get(name)
+        if not isinstance(item, dict):
+            raise ValueError(f"Phase 8.13 manifest is missing the {name} split.")
+        observed = (item.get("first_date"), item.get("last_date"), item.get("sessions"))
+        if observed != (first_date, last_date, sessions):
+            raise ValueError(
+                f"{name} split does not match frozen Phase 8.19 dates/session count: "
+                f"expected {(first_date, last_date, sessions)}, found {observed}."
+            )
+
+    if manifest.get("selected_complete_5m_rows") != 192450:
+        raise ValueError("Phase 8.13 manifest row count does not match the frozen 192,450-candle dataset.")
+    if manifest.get("selected_sessions") != 2566:
+        raise ValueError("Phase 8.13 manifest session count does not match the frozen 2,566 sessions.")
+    symbols = manifest.get("selected_symbols")
+    if not isinstance(symbols, list) or len(set(symbols)) != 50:
+        raise ValueError("Phase 8.13 manifest must identify the frozen 50-symbol universe.")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
