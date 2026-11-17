@@ -16,13 +16,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("historical_csv")
     parser.add_argument("regular_csv")
+    parser.add_argument("--historical-batch", action="append", default=[], help="Additional historical CSV; repeat per file.")
+    parser.add_argument("--regular-batch", action="append", default=[], help="Additional regular-signal CSV; repeat per file.")
     parser.add_argument("--output-dir", default="phase_8_12_output")
     parser.add_argument("--exclude-date", action="append", default=["2026-11-17"])
     args = parser.parse_args()
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    historical = pd.read_csv(args.historical_csv)
-    regular = pd.read_csv(args.regular_csv)
+    historical_paths = [args.historical_csv, *args.historical_batch]
+    regular_paths = [args.regular_csv, *args.regular_batch]
+    historical = pd.concat((pd.read_csv(path) for path in historical_paths), ignore_index=True)
+    regular = pd.concat((pd.read_csv(path) for path in regular_paths), ignore_index=True)
     events, quarantine, phase_811_manifest = prepare_phase_8_11(
         historical, regular, exclude_dates=args.exclude_date
     )
