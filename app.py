@@ -991,5 +991,39 @@ with research:
             "No pattern is promoted to a live signal."
         )
 
+
+    st.divider()
+    st.markdown("### Phase 8.11 · Event-level 5m / closed-15m alignment")
+    st.caption("Build a reproducible event dataset from historical and regular-signal CSV exports. The 15m context is joined only after its candle has closed. No model is trained.")
+    st.warning("Timestamp handling assumes candle-start timestamps, inferred from the supplied data. Confirm this against 5paisa provider documentation before live use. Upload all batches for each export type; historical-only rows are quarantined.")
+    p811_hist_files = st.file_uploader("Historical OHLCV CSV batches", type=["csv"], accept_multiple_files=True, key="phase_8_11_historical_csvs")
+    p811_regular_files = st.file_uploader("Regular-signal candle CSV batches", type=["csv"], accept_multiple_files=True, key="phase_8_11_regular_csvs")
+    p811_exclude_date = st.text_input("Partial/incomplete session date to exclude (YYYY-MM-DD)", value="2026-11-17", key="phase_8_11_exclude_date")
+    p811_max_age = st.number_input("Maximum fresh 15m context age (minutes)", min_value=0, max_value=120, value=25, step=5, key="phase_8_11_max_context_age")
+    if st.button("Build Phase 8.11 event dataset", type="primary", use_container_width=True, disabled=(not p811_hist_files or not p811_regular_files), key="run_phase_8_11_alignment"):
+        try:
+            from engine.ml_event_alignment import prepare_phase_8_11
+            p811_hist = pd.concat([pd.read_csv(file) for file in p811_hist_files], ignore_index=True)
+            p811_regular = pd.concat([pd.read_csv(file) for file in p811_regular_files], ignore_index=True)
+            excluded = [p811_exclude_date.strip()] if p811_exclude_date.strip() else []
+            p811_events, p811_quarantine, p811_manifest = prepare_phase_8_11(p811_hist, p811_regular, exclude_dates=excluded, max_context_age_minutes=int(p811_max_age))
+            st.session_state["phase_8_11_events"] = p811_events
+            st.session_state["phase_8_11_quarantine"] = p811_quarantine
+            st.session_state["phase_8_11_manifest"] = p811_manifest
+            st.session_state["phase_8_11_error"] = ""
+        except Exception as exc:
+            st.session_state.pop("phase_8_11_events", None)
+            st.session_state["phase_8_11_error"] = str(exc)
+    if st.session_state.get("phase_8_11_error"):
+        st.error(f"Phase 8.11 could not run: {st.session_state['phase_8_11_error']}")
+    p811_manifest = st.session_state.get("phase_8_11_manifest")
+    if p811_manifest:
+        st.success(f"Prepared {p811_manifest['eligible_5m_event_rows']:,} 5m events · {p811_manifest['events_with_closed_15m_context']:,} with closed 15m context")
+        st.json(p811_manifest)
+        st.download_button("Download Phase 8.11 event-level CSV", data=st.session_state["phase_8_11_events"].to_csv(index=False).encode("utf-8"), file_name="phase_8_11_event_level_5m.csv", mime="text/csv", use_container_width=True)
+        st.download_button("Download historical-only quarantine CSV", data=st.session_state["phase_8_11_quarantine"].to_csv(index=False).encode("utf-8"), file_name="phase_8_11_historical_only_quarantine.csv", mime="text/csv", use_container_width=True)
+        st.download_button("Download Phase 8.11 audit manifest", data=json.dumps(p811_manifest, indent=2, allow_nan=False).encode("utf-8"), file_name="phase_8_11_audit_manifest.json", mime="application/json", use_container_width=True)
+        st.info("Research-only data preparation. Missing candles are not synthesized; stale higher-timeframe context is flagged; no model, trade signal or order is created.")
+
 st.divider()
 st.caption(f"Chart Reader development build · {datetime.now().strftime('%d %b %Y')}")
