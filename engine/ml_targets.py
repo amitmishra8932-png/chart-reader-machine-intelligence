@@ -1,8 +1,11 @@
-"""Explicit, session-safe directional targets for historical ML research."""
+"""Explicit, gap-safe directional targets for historical ML research."""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+
+SUPPORTED_INTERVAL_MINUTES = {"5m": 5, "15m": 15}
 
 
 def add_directional_targets(
@@ -10,17 +13,17 @@ def add_directional_targets(
     *,
     neutral_bands_pct: dict[int, float],
 ) -> pd.DataFrame:
-    """Add forward returns and {-1, 0, +1} targets without crossing sessions.
+    """Add forward returns and {-1, 0, +1} targets without crossing gaps/sessions.
 
     A target is +1 when the close-to-close forward return exceeds the supplied
     positive neutral band, -1 when it is below the negative band, and 0
     otherwise. The band is expressed in percentage points (e.g. 0.20 means
-    0.20%). Bands are mandatory: this module does not invent a trading edge or
-    transaction-cost assumption.
+    0.20%). Bands are mandatory.
 
-    Input timestamps must be parseable and are interpreted in their supplied
-    timezone/local clock. Rows are grouped by symbol, timeframe and calendar
-    date, sorted chronologically for labelling, and returned in original order.
+    A horizon is labelled only when its endpoint is exactly horizon * the
+    timeframe interval after the source candle. Since duplicate timestamps are
+    rejected and rows are sorted, this prevents labels from jumping over
+    missing candles. Supported intervals are 5m and 15m.
     """
     required = {"timestamp", "symbol", "timeframe", "close"}
     missing = required.difference(frame.columns)
@@ -52,6 +55,13 @@ def add_directional_targets(
         raise ValueError("Every timestamp must be parseable before target creation.")
     if frame[["symbol", "timeframe"]].isna().any().any():
         raise ValueError("symbol and timeframe cannot be missing.")
+    timeframe = frame["timeframe"].astype(str).str.strip().str.lower()
+    unsupported = sorted(set(timeframe) - set(SUPPORTED_INTERVAL_MINUTES))
+    if unsupported:
+        raise ValueError(
+            "Unsupported target timeframe(s); expected 5m or 15m: "
+            + ", ".join(unsupported)
+        )
     close = pd.to_numeric(frame["close"], errors="coerce").to_numpy(dtype=float)
     if not np.isfinite(close).all() or (close <= 0).any():
         raise ValueError("close must contain finite positive prices.")
@@ -59,7 +69,8 @@ def add_directional_targets(
     work = pd.DataFrame({
         "__position": np.arange(len(frame), dtype=np.int64),
         "__symbol": frame["symbol"].astype(str).to_numpy(),
-        "__timeframe": frame["timeframe"].astype(str).to_numpy(),
+        "__timeframe": timeframe.to_numpy(),
+        "__interval_minutes": timeframe.map(SUPPORTED_INTERVAL_MINUTES).to_numpy(),
         "__session_date": parsed.dt.strftime("%Y-%m-%d").to_numpy(),
         "__timestamp": parsed.to_numpy(),
         "__close": close,
@@ -75,7 +86,16 @@ def add_directional_targets(
     result = frame.copy()
 
     for horizon, band in sorted(bands.items()):
-        future = ordered.groupby(group_keys, sort=False)["__close"].shift(-horizon)
+        grouped = ordered.groupby(group_keys, sort=False)
+        future = grouped["__close"].shift(-horizon)
+        future_timestamp = grouped["__timestamp"].shift(-horizon)
+        expected_delta = pd.to_timedelta(
+            ordered["__interval_minutes"].to_numpy(dtype=float) * horizon,
+            unit="m",
+        )
+        continuous = (future_timestamp - ordered["__timestamp"]).eq(expected_delta)
+        future = future.where(continuous)
+
         future_by_position = np.full(len(frame), np.nan, dtype=float)
         future_by_position[ordered["__position"].to_numpy()] = future.to_numpy(dtype=float)
         forward_return = (future_by_position / close - 1.0) * 100.0
