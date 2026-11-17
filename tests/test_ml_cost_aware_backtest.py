@@ -19,18 +19,29 @@ def sample_rows():
     })
 
 
-def test_entry_next_open_exit_after_full_horizon_and_cost():
+def test_entry_next_open_exit_after_exact_full_horizon_and_cost():
+    frame = sample_rows()
+    frame.loc[3, "prediction"] = 0
     trades = simulate_fixed_horizon_trades(
-        sample_rows(), horizon_bars=2, round_trip_cost_bps=10
+        frame, horizon_bars=2, round_trip_cost_bps=10
     )
     assert len(trades) == 1
     trade = trades.iloc[0]
     assert trade["entry_time"] == pd.Timestamp("2026-01-05 09:20")
-    assert trade["exit_time"] == pd.Timestamp("2026-01-05 09:30")
+    assert trade["exit_time"] == pd.Timestamp("2026-01-05 09:25")
     assert trade["side"] == "LONG"
     assert trade["entry_price"] == 101
-    assert trade["exit_price"] == 104
-    assert trade["net_return"] == pytest.approx((104 / 101 - 1) - 0.001)
+    assert trade["exit_price"] == 103
+    assert trade["net_return"] == pytest.approx((103 / 101 - 1) - 0.001)
+
+
+def test_one_bar_horizon_exits_at_entry_candle_close():
+    trades = simulate_fixed_horizon_trades(sample_rows(), horizon_bars=1)
+    assert len(trades) == 2
+    first = trades.iloc[0]
+    assert first["entry_time"] == pd.Timestamp("2026-01-05 09:20")
+    assert first["exit_time"] == pd.Timestamp("2026-01-05 09:20")
+    assert first["exit_price"] == 102
 
 
 def test_does_not_cross_timestamp_gap_or_session():
@@ -43,8 +54,9 @@ def test_does_not_cross_timestamp_gap_or_session():
 def test_non_overlapping_and_neutral_signals_skipped():
     frame = sample_rows()
     trades = simulate_fixed_horizon_trades(frame, horizon_bars=2)
-    assert len(trades) == 1
+    assert len(trades) == 2
     assert trades.iloc[0]["signal_time"] == pd.Timestamp("2026-01-05 09:15")
+    assert trades.iloc[1]["signal_time"] == pd.Timestamp("2026-01-05 09:30")
 
 
 def test_cost_and_prediction_validation():
@@ -59,5 +71,5 @@ def test_cost_and_prediction_validation():
 def test_summary_reports_trade_level_metrics():
     trades = simulate_fixed_horizon_trades(sample_rows(), horizon_bars=2)
     summary = summarize_trades(trades)
-    assert summary["trade_count"] == 1
+    assert summary["trade_count"] == 2
     assert summary["net_win_rate_pct"] == 100.0
