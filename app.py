@@ -139,7 +139,9 @@ with overview:
         - [x] Manual paper-trading journal with risk-based sizing and CSV backup/restore
         - [ ] Verify 5paisa authentication and historical candles with real account data
         - [ ] Validate the paper journal with observed market prices and a documented sample
-        - [ ] Live read-only monitoring and automated signal replay (only after data/timestamp verification)
+        - [x] Live read-only market monitor and completed 5m/15m candle aggregation (account verification pending)
+        - [ ] Verify live tick timestamps, volume deltas and candle boundaries against the 5paisa terminal
+        - [ ] Add model-driven signal replay only after independent historical validation
 
         *Research only: no automatic order placement. Historical-data gap counts are estimates and should be checked against exchange sessions.*
         """
