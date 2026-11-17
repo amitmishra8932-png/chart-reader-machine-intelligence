@@ -31,7 +31,10 @@ def _tick_timestamp(value) -> pd.Timestamp:
         raise ValueError("Tick timestamp is missing.")
     if text.startswith("/Date(") and text.endswith(")/"):
         millis = int(text[6:-2].split("+")[0].split("-")[0])
-        return pd.to_datetime(millis, unit="ms", utc=True).tz_convert("Asia/Kolkata")
+        stamp = pd.to_datetime(millis, unit="ms", utc=True).tz_convert("Asia/Kolkata")
+        if stamp.year < 2000:
+            raise ValueError("Tick timestamp is an invalid provider sentinel.")
+        return stamp
     stamp = pd.Timestamp(text)
     if stamp.year < 2000:
         raise ValueError("Tick timestamp is an invalid provider sentinel.")
