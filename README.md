@@ -31,6 +31,19 @@ Required columns: `timestamp` (or `date`), `open`, `high`, `low`, `close`. `volu
 
 The historical-data provider is isolated in `providers/fivepaisa.py`; live streaming is isolated in `providers/fivepaisa_live.py`. The live adapter uses the official Xstream WebSocket `MarketFeedV3` subscription for NSE cash instruments and aggregates received ticks into 5m/15m candles. The Streamlit Live Market tab is read-only. Before relying on it, verify the user's 5paisa market-data permissions, registered OAuth callback, live WebSocket access and actual tick timestamps. Do not commit API keys, passwords, encryption keys, request tokens or access tokens. Store long-lived credentials in Streamlit Community Cloud Secrets; the access token remains in the current Streamlit session.
 
+### Streamlit Community Cloud secrets
+
+Add these placeholders in the app's Secrets settings, replacing each value privately. The redirect URL must exactly match the callback registered in the 5paisa developer app.
+
+```toml
+FIVEPAISA_API_KEY = "your_app_key"
+FIVEPAISA_ENCRYPTION_KEY = "your_encryption_key"
+FIVEPAISA_USER_ID = "your_5paisa_user_id"
+FIVEPAISA_REDIRECT_URL = "https://your-app-name.streamlit.app/"
+```
+
+Never paste real credentials into GitHub source files or chat messages.
+
 ## Safety and research notes
 
 - Read-only research application; no order placement.
