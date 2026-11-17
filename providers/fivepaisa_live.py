@@ -236,13 +236,22 @@ class FivePaisaLiveFeed:
         def on_close(ws, status_code, message):
             self._on_status("5paisa live market feed disconnected.")
 
-        self._app = websocket.WebSocketApp(
-            url, on_open=on_open, on_message=on_message,
-            on_error=on_error, on_close=on_close,
-        )
-
         def run():
-            self._app.run_forever(ping_interval=20, ping_timeout=10)
+            retry_delay = 1.0
+            while not self._stop.is_set():
+                self._app = websocket.WebSocketApp(
+                    url, on_open=on_open, on_message=on_message,
+                    on_error=on_error, on_close=on_close,
+                )
+                self._app.run_forever(ping_interval=20, ping_timeout=10)
+                if self._stop.is_set():
+                    break
+                self._on_status(
+                    f"5paisa feed disconnected; reconnecting in {int(retry_delay)}s."
+                )
+                if self._stop.wait(retry_delay):
+                    break
+                retry_delay = min(retry_delay * 2, 30.0)
 
         self._thread = threading.Thread(target=run, name="fivepaisa-live-feed", daemon=True)
         self._thread.start()
