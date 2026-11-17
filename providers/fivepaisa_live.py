@@ -119,6 +119,10 @@ class LiveCandleBuilder:
             timestamp = timestamp.tz_convert("Asia/Kolkata")
         bucket = timestamp.floor(f"{self.interval_minutes}min")
 
+        current = self._current.get(symbol)
+        if current is not None and bucket < current["timestamp"]:
+            return None
+
         total = tick.get("total_qty")
         last_qty = int(tick.get("last_qty") or 0)
         session = timestamp.strftime("%Y-%m-%d")
@@ -131,7 +135,6 @@ class LiveCandleBuilder:
         else:
             volume_delta = max(last_qty, 0)
 
-        current = self._current.get(symbol)
         if current is None:
             self._current[symbol] = {
                 "timestamp": bucket, "symbol": symbol,
@@ -141,8 +144,6 @@ class LiveCandleBuilder:
             }
             return None
 
-        if bucket < current["timestamp"]:
-            return None
         if bucket == current["timestamp"]:
             price = float(tick["last_price"])
             current["high"] = max(current["high"], price)
