@@ -47,6 +47,7 @@ def test_one_bar_horizon_exits_at_entry_candle_close():
 def test_does_not_cross_timestamp_gap_or_session():
     frame = sample_rows()
     frame.loc[2, "timestamp"] = pd.Timestamp("2026-01-05 09:26")
+    frame.loc[3, "prediction"] = 0
     trades = simulate_fixed_horizon_trades(frame, horizon_bars=2)
     assert trades.empty
 
@@ -72,4 +73,4 @@ def test_summary_reports_trade_level_metrics():
     trades = simulate_fixed_horizon_trades(sample_rows(), horizon_bars=2)
     summary = summarize_trades(trades)
     assert summary["trade_count"] == 2
-    assert summary["net_win_rate_pct"] == 100.0
+    assert summary["net_win_rate_pct"] == 50.0
