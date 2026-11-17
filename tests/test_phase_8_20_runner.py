@@ -75,13 +75,21 @@ class Phase820RunnerTests(unittest.TestCase):
             fit_frozen_test_predictions(frame)
 
     def test_manifest_must_match_frozen_neutral_bands(self):
-        validate_phase_8_19_manifest({
-            "neutral_bands_pct": {"3": 0.20, "6": 0.20, "12": 0.20}
-        })
+        manifest = {
+            "neutral_bands_pct": {"3": 0.20, "6": 0.20, "12": 0.20},
+            "splits": {
+                "train": {"first_date": "2026-05-19", "last_date": "2026-07-09", "sessions": 36},
+                "validation": {"first_date": "2026-07-10", "last_date": "2026-07-21", "sessions": 8},
+                "test": {"first_date": "2026-07-22", "last_date": "2026-07-31", "sessions": 8},
+            },
+            "selected_complete_5m_rows": 192450,
+            "selected_sessions": 2566,
+            "selected_symbols": [f"S{i:02d}" for i in range(50)],
+        }
+        validate_phase_8_19_manifest(manifest)
+        manifest["neutral_bands_pct"]["3"] = 0.10
         with self.assertRaises(ValueError):
-            validate_phase_8_19_manifest({
-                "neutral_bands_pct": {"3": 0.10, "6": 0.20, "12": 0.30}
-            })
+            validate_phase_8_19_manifest(manifest)
 
 
 if __name__ == "__main__":
