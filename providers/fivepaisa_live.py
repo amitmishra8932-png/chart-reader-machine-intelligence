@@ -33,9 +33,13 @@ def _tick_timestamp(value) -> pd.Timestamp:
         millis = int(text[6:-2].split("+")[0].split("-")[0])
         return pd.to_datetime(millis, unit="ms", utc=True).tz_convert("Asia/Kolkata")
     stamp = pd.Timestamp(text)
+    if stamp.year < 2000:
+        raise ValueError("Tick timestamp is an invalid provider sentinel.")
     if stamp.tzinfo is None:
-        return stamp.tz_localize("Asia/Kolkata")
-    return stamp.tz_convert("Asia/Kolkata")
+        stamp = stamp.tz_localize("Asia/Kolkata")
+    else:
+        stamp = stamp.tz_convert("Asia/Kolkata")
+    return stamp
 
 
 def _extract_tick_rows(payload):
@@ -226,7 +230,7 @@ class FivePaisaLiveFeed:
 
         def on_open(ws):
             ws.send(self._subscription("Subscribe"))
-            self._on_status("Connected to 5paisa live market feed.")
+            self._on_status("WebSocket connected; subscription sent; waiting for the first market tick.")
 
         def on_message(ws, message):
             try:
