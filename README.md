@@ -49,3 +49,7 @@ The provider boundary is isolated in `providers/fivepaisa.py`. Authentication an
 5. Add live read-only monitoring.
 6. Validate the manual paper-trading journal with controlled forward observations.
 7. Add automated signal replay only after data timestamps and signal rules are independently validated.
+
+## 5paisa live read-only monitor
+
+The Live Market tab uses the authenticated Xstream `MarketFeedV3` WebSocket for NSE cash instruments. It displays live ticks and completed 5-minute/15-minute OHLCV candles only. Store `FIVEPAISA_API_KEY`, `FIVEPAISA_ENCRYPTION_KEY`, `FIVEPAISA_USER_ID`, and `FIVEPAISA_REDIRECT_URL` in Streamlit Community Cloud Secrets; never commit or paste credentials into chat. The registered 5paisa OAuth callback must exactly match the configured redirect URL. Verify actual live ticks, timestamp semantics and volume deltas against the 5paisa terminal before using the data for research. This integration has no order-placement capability.
