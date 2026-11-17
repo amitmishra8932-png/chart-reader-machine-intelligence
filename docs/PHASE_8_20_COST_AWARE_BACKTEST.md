@@ -34,10 +34,10 @@ The corrected simulator and reproducible runner are now in the PR branch. A succ
 From the repository root, run:
 
 ```bash
-python scripts/phase_8_20_cost_aware_backtest.py path/to/phase_8_13_chronological_research_dataset.csv --output-dir phase_8_20_output
+python scripts/phase_8_20_cost_aware_backtest.py path/to/phase_8_13_chronological_research_dataset.csv --manifest-json path/to/phase_8_13_dataset_manifest.json --output-dir phase_8_20_output
 ```
 
-The runner validates chronological date splits and the 5-minute schema, fits each horizon model on labelled training rows only, predicts labelled test rows, and applies the corrected event simulator. It writes test predictions per horizon and a JSON summary containing model settings, cost scenarios, symbol/date breakdowns, software version, and the input CSV SHA-256. Set `GITHUB_SHA` when running in CI to record the code revision.
+The runner validates chronological date splits and the 5-minute schema, checks that the Phase 8.13 manifest's neutral bands match the frozen Phase 8.19 ±0.20% protocol for all horizons, fits each horizon model on labelled training rows only, predicts labelled test rows, and applies the corrected event simulator. If the archived manifest records different bands, the runner stops rather than silently evaluating a different experiment. It writes test predictions per horizon and a JSON summary containing model settings, cost scenarios, symbol/date breakdowns, software version, and the input CSV SHA-256. Set `GITHUB_SHA` when running in CI to record the code revision.
 
 The runner deliberately does not tune on validation or test data. The test partition is retained only for the already-defined Phase 8.19 diagnostic and remains a previously consumed window.
 
