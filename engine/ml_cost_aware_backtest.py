@@ -21,7 +21,8 @@ def simulate_fixed_horizon_trades(
     horizon_bars: int,
     interval_minutes: int = 5,
     round_trip_cost_bps: float = 0.0,
-) -> pd.DataFrame:
+    return_audit: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Convert predictions to non-overlapping, session-bounded trades.
 
     Prediction at candle t is assumed available only after t closes. Entry is
@@ -36,8 +37,14 @@ def simulate_fixed_horizon_trades(
         "side", "entry_price", "exit_price", "gross_return", "cost_return",
         "net_return",
     ]
+    audit_columns = [
+        "symbol", "session_date", "signal_time", "prediction",
+        "status", "reason", "entry_time", "exit_time",
+    ]
     if predictions.empty:
-        return pd.DataFrame(columns=columns)
+        empty_trades = pd.DataFrame(columns=columns)
+        empty_audit = pd.DataFrame(columns=audit_columns)
+        return (empty_trades, empty_audit) if return_audit else empty_trades
     if (
         isinstance(horizon_bars, bool)
         or int(horizon_bars) != horizon_bars
@@ -66,10 +73,14 @@ def simulate_fixed_horizon_trades(
         raise ValueError("prediction must contain only -1, 0, +1.")
     if data[["symbol", "session_date"]].isna().any().any():
         raise ValueError("symbol and session_date cannot be missing.")
+    timestamp_dates = data["timestamp"].dt.strftime("%Y-%m-%d")
+    if not timestamp_dates.eq(data["session_date"].astype(str)).all():
+        raise ValueError("session_date must match each timestamp's calendar date.")
     if data.duplicated(["symbol", "timestamp"]).any():
         raise ValueError("Duplicate symbol/timestamp rows are not allowed.")
 
     trades = []
+    audit = []
     cost = float(round_trip_cost_bps) / 10000.0
     step = pd.Timedelta(minutes=int(interval_minutes))
 
@@ -80,17 +91,39 @@ def simulate_fixed_horizon_trades(
         last_exit_index = -1
         for signal_index, row in group.iterrows():
             side = int(row["prediction"])
-            if side == 0 or signal_index <= last_exit_index:
+            audit_row = {
+                "symbol": str(symbol),
+                "session_date": str(session_date),
+                "signal_time": row["timestamp"],
+                "prediction": side,
+                "status": "skipped",
+                "reason": None,
+                "entry_time": pd.NaT,
+                "exit_time": pd.NaT,
+            }
+            if side == 0:
+                audit_row["reason"] = "neutral_prediction"
+                audit.append(audit_row)
+                continue
+            if signal_index <= last_exit_index:
+                audit_row["reason"] = "overlap_or_exit_bar_cooldown"
+                audit.append(audit_row)
                 continue
 
             entry_index = signal_index + 1
             exit_index = signal_index + int(horizon_bars)
-            if exit_index >= len(group):
+            if entry_index >= len(group) or exit_index >= len(group):
+                audit_row["reason"] = "insufficient_horizon_bars"
+                audit.append(audit_row)
                 continue
 
             entry = group.iloc[entry_index]
             exit_row = group.iloc[exit_index]
+            audit_row["entry_time"] = entry["timestamp"]
+            audit_row["exit_time"] = exit_row["timestamp"]
             if entry["timestamp"] - row["timestamp"] != step:
+                audit_row["reason"] = "entry_timestamp_gap"
+                audit.append(audit_row)
                 continue
 
             expected_times = pd.date_range(
@@ -102,6 +135,8 @@ def simulate_fixed_horizon_trades(
                 entry_index:exit_index, "timestamp"
             ].reset_index(drop=True)
             if not observed_times.equals(pd.Series(expected_times)):
+                audit_row["reason"] = "holding_window_gap"
+                audit.append(audit_row)
                 continue
 
             entry_price = float(entry["open"])
@@ -125,8 +160,13 @@ def simulate_fixed_horizon_trades(
                 "net_return": gross - cost,
             })
             last_exit_index = exit_index
+            audit_row["status"] = "accepted"
+            audit_row["reason"] = "executed"
+            audit.append(audit_row)
 
-    return pd.DataFrame(trades, columns=columns)
+    trade_frame = pd.DataFrame(trades, columns=columns)
+    audit_frame = pd.DataFrame(audit, columns=audit_columns)
+    return (trade_frame, audit_frame) if return_audit else trade_frame
 
 
 def summarize_trades(trades: pd.DataFrame) -> dict:
