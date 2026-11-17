@@ -57,7 +57,11 @@ def simulate_fixed_horizon_trades(
         or interval_minutes <= 0
     ):
         raise ValueError("interval_minutes must be a positive integer.")
-    if not np.isfinite(round_trip_cost_bps) or round_trip_cost_bps < 0:
+    try:
+        cost_bps = float(round_trip_cost_bps)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("round_trip_cost_bps must be a finite non-negative number.") from exc
+    if not np.isfinite(cost_bps) or cost_bps < 0:
         raise ValueError("round_trip_cost_bps must be finite and non-negative.")
 
     data = predictions.copy()
@@ -81,7 +85,7 @@ def simulate_fixed_horizon_trades(
 
     trades = []
     audit = []
-    cost = float(round_trip_cost_bps) / 10000.0
+    cost = cost_bps / 10000.0
     step = pd.Timedelta(minutes=int(interval_minutes))
 
     for (symbol, session_date), group in data.groupby(
