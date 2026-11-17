@@ -1,5 +1,6 @@
 from datetime import datetime, date, timedelta
 import json
+import queue
 from pathlib import Path
 
 import pandas as pd
@@ -25,6 +26,7 @@ from providers.fivepaisa import (
     connection_status, get_credentials, build_oauth_url, exchange_request_token,
     resolve_scrip_codes_via_market_feed, fetch_historical_candles,
 )
+from providers.fivepaisa_live import FivePaisaLiveFeed, LiveCandleBuilder
 
 st.set_page_config(
     page_title="Chart Reader | Machine Intelligence",
@@ -34,7 +36,7 @@ st.set_page_config(
 )
 
 st.title("📈 Chart Reader — Machine Intelligence")
-st.caption("An evidence-led market analysis laboratory · 5paisa integration in progress")
+st.caption("An evidence-led market analysis laboratory · 5paisa historical and live read-only market data")
 
 if "fivepaisa_access_token" not in st.session_state:
     st.session_state["fivepaisa_access_token"] = ""
@@ -81,8 +83,8 @@ with st.sidebar:
         st.warning("Configure FIVEPAISA_API_KEY, FIVEPAISA_ENCRYPTION_KEY, FIVEPAISA_USER_ID and FIVEPAISA_REDIRECT_URL in Streamlit Secrets.")
 
 st.subheader("Workspace")
-overview, chart_tab, intelligence, structure_tab, historical_tab, paper_tab, library_tab, research = st.tabs(
-    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Historical Data Centre", "Paper trading", "Pattern library", "Research & validation"]
+overview, chart_tab, intelligence, structure_tab, historical_tab, live_tab, paper_tab, library_tab, research = st.tabs(
+    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Historical Data Centre", "Live Market", "Paper trading", "Pattern library", "Research & validation"]
 )
 
 if "paper_trades" not in st.session_state:
@@ -479,6 +481,144 @@ with historical_tab:
                 st.write("• " + item)
     st.caption("NIFTY 50 membership is dated and should be refreshed after NSE reviews. Actual historical availability depends on 5paisa account permissions and API response.")
     
+with live_tab:
+    st.markdown("### 5paisa Live Market Monitor")
+    st.caption("Authenticated NSE cash ticks · completed 5-minute and 15-minute candles · read-only")
+    st.info("This monitor displays live market data only. It does not generate validated ML recommendations or place orders.")
+    if not st.session_state["fivepaisa_access_token"]:
+        st.warning("Authenticate with 5paisa from the sidebar before starting the live feed.")
+    else:
+        selected_live_symbols = st.multiselect(
+            "NIFTY 50 live watchlist", options=NIFTY50_SYMBOLS,
+            default=["RELIANCE", "HDFCBANK", "INFY"],
+            max_selections=50,
+            help="Choose up to 50 NSE cash equities. Start the feed manually; no subscriptions are made automatically."
+        )
+        runtime = st.session_state.get("fivepaisa_live_runtime")
+        running = bool(runtime and runtime.get("feed"))
+        start_col, stop_col = st.columns(2)
+        start_clicked = start_col.button(
+            "Start live feed", type="primary", use_container_width=True,
+            disabled=running or not selected_live_symbols,
+        )
+        stop_clicked = stop_col.button(
+            "Stop live feed", use_container_width=True, disabled=not running,
+        )
+        if start_clicked:
+            try:
+                credentials = get_credentials(st.secrets)
+                with st.spinner("Resolving selected NSE symbols through 5paisa..."):
+                    scrip_codes = resolve_scrip_codes_via_market_feed(
+                        st.session_state["fivepaisa_access_token"],
+                        credentials["api_key"],
+                        st.session_state["fivepaisa_client_code"],
+                        selected_live_symbols,
+                    )
+                event_queue = queue.Queue(maxsize=10000)
+                builders = {"5m": LiveCandleBuilder(5), "15m": LiveCandleBuilder(15)}
+
+                def publish_live_event(event):
+                    try:
+                        event_queue.put_nowait(event)
+                    except queue.Full:
+                        try:
+                            event_queue.get_nowait()
+                        except queue.Empty:
+                            pass
+                        try:
+                            event_queue.put_nowait(event)
+                        except queue.Full:
+                            pass
+
+                def handle_live_tick(tick):
+                    publish_live_event({"kind": "tick", "data": tick})
+                    for timeframe, builder in builders.items():
+                        completed_bar = builder.add_tick(tick)
+                        if completed_bar is not None:
+                            publish_live_event({
+                                "kind": "candle", "timeframe": timeframe,
+                                "data": completed_bar,
+                            })
+
+                feed = FivePaisaLiveFeed(
+                    st.session_state["fivepaisa_access_token"],
+                    st.session_state["fivepaisa_client_code"],
+                    credentials["api_key"], scrip_codes,
+                    on_tick=handle_live_tick,
+                    on_error=lambda message: publish_live_event({"kind": "error", "message": message}),
+                    on_status=lambda message: publish_live_event({"kind": "status", "message": message}),
+                )
+                feed.start()
+                st.session_state["fivepaisa_live_runtime"] = {
+                    "feed": feed, "queue": event_queue,
+                    "symbols": list(scrip_codes), "status": "Connecting",
+                }
+                st.session_state["fivepaisa_live_ticks"] = []
+                st.session_state["fivepaisa_live_bars"] = {"5m": [], "15m": []}
+                st.session_state["fivepaisa_live_error"] = ""
+                st.success(f"Live feed starting for {len(scrip_codes)} selected NSE stocks.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Could not start 5paisa live feed: {exc}")
+        if stop_clicked and runtime:
+            runtime["feed"].stop()
+            st.session_state["fivepaisa_live_runtime"] = None
+            st.info("Live feed stopped.")
+            st.rerun()
+
+        runtime = st.session_state.get("fivepaisa_live_runtime")
+        if runtime:
+            @st.fragment(run_every="1s")
+            def render_live_feed_panel():
+                live_runtime = st.session_state.get("fivepaisa_live_runtime")
+                if not live_runtime:
+                    st.info("Live feed is stopped.")
+                    return
+                event_queue = live_runtime["queue"]
+                while True:
+                    try:
+                        event = event_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    if event["kind"] == "tick":
+                        st.session_state["fivepaisa_live_ticks"].append(event["data"])
+                        st.session_state["fivepaisa_live_ticks"] = st.session_state["fivepaisa_live_ticks"][-300:]
+                    elif event["kind"] == "candle":
+                        timeframe = event["timeframe"]
+                        st.session_state["fivepaisa_live_bars"][timeframe].append(event["data"])
+                        st.session_state["fivepaisa_live_bars"][timeframe] = st.session_state["fivepaisa_live_bars"][timeframe][-300:]
+                    elif event["kind"] == "status":
+                        live_runtime["status"] = event["message"]
+                    elif event["kind"] == "error":
+                        st.session_state["fivepaisa_live_error"] = event["message"]
+                st.metric("Feed status", live_runtime["status"])
+                st.caption("Subscribed: " + ", ".join(live_runtime["symbols"]))
+                if st.session_state.get("fivepaisa_live_error"):
+                    st.warning(st.session_state["fivepaisa_live_error"])
+                ticks = st.session_state.get("fivepaisa_live_ticks", [])
+                if ticks:
+                    latest = pd.DataFrame(ticks).sort_values("timestamp", ascending=False)
+                    st.markdown("#### Latest live ticks")
+                    st.dataframe(
+                        latest[["timestamp", "symbol", "last_price", "last_qty", "total_qty"]].head(30),
+                        use_container_width=True, hide_index=True,
+                    )
+                else:
+                    st.info("Connected or connecting. Waiting for the first market tick.")
+                timeframe = st.selectbox("Completed candle timeframe", ["5m", "15m"], key="live_candle_timeframe")
+                bars = st.session_state.get("fivepaisa_live_bars", {}).get(timeframe, [])
+                if bars:
+                    st.markdown(f"#### Completed {timeframe} candles")
+                    st.dataframe(
+                        pd.DataFrame(bars).sort_values(["symbol", "timestamp"], ascending=[True, False]),
+                        use_container_width=True, hide_index=True,
+                    )
+                else:
+                    st.caption("Completed candles will appear after the next interval begins. In-progress candles are not displayed as completed bars.")
+            render_live_feed_panel()
+        else:
+            st.caption("The live feed is stopped. Select a watchlist and start it when ready.")
+
 with paper_tab:
     st.markdown("### Paper Trading — Manual Simulation")
     st.warning(
