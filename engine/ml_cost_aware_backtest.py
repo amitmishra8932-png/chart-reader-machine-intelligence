@@ -25,9 +25,8 @@ def simulate_fixed_horizon_trades(
     """Convert predictions to non-overlapping, session-bounded trades.
 
     Prediction at candle t is assumed available only after t closes. Entry is
-    candle t+1 open; exit is the close of candle t+horizon_bars. Thus the
-    holding interval contains exactly horizon_bars full candles, including the
-    entry candle.
+    candle t+1 open; exit is candle t+horizon_bars close. Thus the holding
+    interval contains exactly horizon_bars full candles, including entry.
     """
     missing = REQUIRED_COLUMNS.difference(predictions.columns)
     if missing:
@@ -136,6 +135,8 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
         return {
             "trade_count": 0,
             "gross_mean_bps": None,
+            "gross_median_bps": None,
+            "gross_win_rate_pct": None,
             "net_mean_bps": None,
             "net_median_bps": None,
             "net_win_rate_pct": None,
@@ -149,6 +150,8 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
     return {
         "trade_count": int(len(trades)),
         "gross_mean_bps": float(gross.mean() * 10000),
+        "gross_median_bps": float(gross.median() * 10000),
+        "gross_win_rate_pct": float((gross > 0).mean() * 100),
         "net_mean_bps": float(net.mean() * 10000),
         "net_median_bps": float(net.median() * 10000),
         "net_win_rate_pct": float((net > 0).mean() * 100),
