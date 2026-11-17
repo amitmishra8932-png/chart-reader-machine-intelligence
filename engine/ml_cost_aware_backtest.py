@@ -65,7 +65,13 @@ def simulate_fixed_horizon_trades(
             entry, exit_row = group.iloc[entry_index], group.iloc[exit_index]
             if entry["timestamp"] - row["timestamp"] != step:
                 continue
-            if exit_row["timestamp"] - entry["timestamp"] != step * int(horizon_bars):
+            expected_times = pd.date_range(
+                start=entry["timestamp"], periods=int(horizon_bars) + 1, freq=step
+            )
+            observed_times = group.loc[
+                entry_index:exit_index, "timestamp"
+            ].reset_index(drop=True)
+            if not observed_times.equals(pd.Series(expected_times)):
                 continue
             entry_price, exit_price = float(entry["open"]), float(exit_row["close"])
             gross = (exit_price / entry_price - 1.0) if side == 1 else ((entry_price-exit_price)/entry_price)
