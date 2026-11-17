@@ -7,6 +7,7 @@ from scripts.phase_8_20_cost_aware_backtest import (
     HORIZON_FEATURES,
     fit_frozen_test_predictions,
     run_experiment,
+    validate_phase_8_19_manifest,
 )
 
 
@@ -72,6 +73,15 @@ class Phase820RunnerTests(unittest.TestCase):
         frame.loc[0, "validation_split"] = "validation"
         with self.assertRaises(ValueError):
             fit_frozen_test_predictions(frame)
+
+    def test_manifest_must_match_frozen_neutral_bands(self):
+        validate_phase_8_19_manifest({
+            "neutral_bands_pct": {"3": 0.20, "6": 0.20, "12": 0.20}
+        })
+        with self.assertRaises(ValueError):
+            validate_phase_8_19_manifest({
+                "neutral_bands_pct": {"3": 0.10, "6": 0.20, "12": 0.30}
+            })
 
 
 if __name__ == "__main__":
