@@ -37,7 +37,7 @@ From the repository root, run:
 python scripts/phase_8_20_cost_aware_backtest.py path/to/phase_8_13_chronological_research_dataset.csv --manifest-json path/to/phase_8_13_dataset_manifest.json --output-dir phase_8_20_output
 ```
 
-The runner validates chronological date splits and the 5-minute schema, checks that the Phase 8.13 manifest matches the frozen dataset identity (192,450 candles, 2,566 sessions, 50 symbols), exact train/validation/test date ranges, and the Phase 8.19 ±0.20% neutral band for all horizons, fits each horizon model on labelled training rows only, predicts labelled test rows, and applies the corrected event simulator. If the archived manifest records different bands, the runner stops rather than silently evaluating a different experiment. It writes test predictions per horizon and a JSON summary containing model settings, cost scenarios, symbol/date breakdowns, software version, and the input CSV SHA-256. Set `GITHUB_SHA` when running in CI to record the code revision.
+The runner validates chronological date splits and the 5-minute schema, checks that the Phase 8.13 manifest matches the frozen dataset identity (192,450 candles, 2,566 sessions, 50 symbols), exact train/validation/test date ranges, and the Phase 8.19 ±0.20% neutral band for all horizons, fits each horizon model on labelled training rows only, predicts labelled test rows, and applies the corrected event simulator. If the archived manifest records different bands, the runner stops rather than silently evaluating a different experiment. It writes test predictions and event-audit CSVs per horizon, plus a JSON summary containing model settings, accepted/skipped-event reason counts, cost scenarios, symbol/date breakdowns, software version, and the input CSV SHA-256. Set `GITHUB_SHA` when running in CI to record the code revision.
 
 The runner deliberately does not tune on validation or test data. The test partition is retained only for the already-defined Phase 8.19 diagnostic and remains a previously consumed window.
 
@@ -46,7 +46,7 @@ The runner deliberately does not tune on validation or test data. The test parti
 **Pending rerun.** Do not populate this section until results have been regenerated from the corrected simulator and reconciled against the frozen Phase 8.13 manifest.
 
 The rerun must report, for each horizon (3, 6 and 12 bars):
-- valid event count and skipped-event reasons;
+- valid event count and skipped-event reasons (exported in the event-audit CSV);
 - long/short counts;
 - gross and net mean/median return;
 - gross and net win rate;
