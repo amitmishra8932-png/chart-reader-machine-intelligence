@@ -73,6 +73,20 @@ class CostAwareBacktestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             simulate_fixed_horizon_trades(frame, horizon_bars=2)
 
+    def test_event_audit_reports_neutral_and_executed_reasons(self):
+        trades, audit = simulate_fixed_horizon_trades(
+            sample_rows(), horizon_bars=2, return_audit=True
+        )
+        self.assertEqual(len(trades), 2)
+        self.assertIn("neutral_prediction", set(audit["reason"]))
+        self.assertEqual(int((audit["status"] == "accepted").sum()), 2)
+
+    def test_rejects_session_date_mismatch(self):
+        frame = sample_rows()
+        frame.loc[0, "session_date"] = "2026-01-06"
+        with self.assertRaises(ValueError):
+            simulate_fixed_horizon_trades(frame, horizon_bars=2)
+
     def test_summary_reports_trade_level_metrics(self):
         trades = simulate_fixed_horizon_trades(sample_rows(), horizon_bars=2)
         summary = summarize_trades(trades)
