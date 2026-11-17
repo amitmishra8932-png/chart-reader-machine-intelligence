@@ -92,6 +92,9 @@ def _validate_dataset(frame: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("Dataset contains invalid timestamps.")
     if data[["symbol", "timeframe", "validation_split"]].isna().any().any():
         raise ValueError("Symbol, timeframe and split fields cannot be missing.")
+    for column in ("symbol", "timeframe", "validation_split"):
+        if data[column].astype(str).str.strip().eq("").any():
+            raise ValueError(f"{column} cannot contain blank values.")
     if not data["timeframe"].astype(str).str.lower().eq("5m").all():
         raise ValueError("Phase 8.20 requires the Phase 8.13 5-minute dataset only.")
     if not data["validation_split"].astype(str).isin(
@@ -127,11 +130,15 @@ def _validate_dataset(frame: pd.DataFrame) -> pd.DataFrame:
     for horizon in HORIZON_FEATURES:
         target = f"target_{horizon}"
         numeric = pd.to_numeric(data[target], errors="coerce")
+        if numeric[data[target].notna()].isna().any():
+            raise ValueError(f"{target} contains non-numeric labels.")
         observed = numeric.dropna()
-        if not set(observed.astype(int).unique()).issubset({-1, 0, 1}):
-            raise ValueError(f"{target} must contain only -1, 0, +1 or missing.")
+        if not np.isfinite(observed.to_numpy(dtype=float)).all():
+            raise ValueError(f"{target} contains non-finite labels.")
         if not np.equal(observed.to_numpy(float), np.floor(observed.to_numpy(float))).all():
             raise ValueError(f"{target} contains fractional class labels.")
+        if not set(observed.astype(int).unique()).issubset({-1, 0, 1}):
+            raise ValueError(f"{target} must contain only -1, 0, +1 or missing.")
         data[target] = numeric
 
     return data
@@ -263,15 +270,41 @@ def run_experiment(
     return predictions, report
 
 
+def validate_phase_8_19_manifest(manifest: dict[str, Any]) -> None:
+    """Fail closed unless Phase 8.13 target bands match the frozen report."""
+    bands = manifest.get("neutral_bands_pct")
+    if not isinstance(bands, dict):
+        raise ValueError("Phase 8.13 manifest must include neutral_bands_pct.")
+    for horizon in ("3", "6", "12"):
+        if horizon not in bands:
+            raise ValueError(f"Phase 8.13 manifest is missing the {horizon}-bar neutral band.")
+        try:
+            value = float(bands[horizon])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid neutral band for horizon {horizon}.") from exc
+        if not np.isclose(value, 0.20, rtol=0.0, atol=1e-12):
+            raise ValueError(
+                f"Phase 8.19 protocol requires a 0.20% neutral band for {horizon} bars; "
+                f"manifest contains {value}%. Do not rerun until the protocol is reconciled."
+            )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset_csv", help="Phase 8.13 chronological research CSV")
+    parser.add_argument("--manifest-json", required=True,
+                        help="Matching phase_8_13_dataset_manifest.json")
     parser.add_argument("--output-dir", default="phase_8_20_output")
     args = parser.parse_args()
 
     source = Path(args.dataset_csv)
+    manifest_source = Path(args.manifest_json)
     raw_bytes = source.read_bytes()
+    manifest_bytes = manifest_source.read_bytes()
     sha256 = hashlib.sha256(raw_bytes).hexdigest()
+    manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+    manifest = json.loads(manifest_bytes.decode("utf-8"))
+    validate_phase_8_19_manifest(manifest)
     frame = pd.read_csv(source)
     predictions, report = run_experiment(frame)
     output = Path(args.output_dir)
@@ -282,6 +315,9 @@ def main() -> None:
     report["input"] = {
         "filename": source.name,
         "sha256": sha256,
+        "manifest_filename": manifest_source.name,
+        "manifest_sha256": manifest_sha256,
+        "manifest_neutral_bands_pct": manifest["neutral_bands_pct"],
         "rows": int(len(frame)),
         "symbols": sorted(frame["symbol"].astype(str).unique().tolist()),
     }
