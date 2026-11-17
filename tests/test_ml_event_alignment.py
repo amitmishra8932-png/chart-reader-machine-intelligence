@@ -16,20 +16,21 @@ def frame(rows, timeframe):
 class EventAlignmentTests(unittest.TestCase):
     def test_only_closed_higher_timeframe_context_is_joined(self):
         hist = pd.concat([
-            frame(["2026-01-05 09:15", "2026-01-05 09:20", "2026-01-05 09:25"], "5m"),
+            frame(["2026-01-05 09:15", "2026-01-05 09:20", "2026-01-05 09:25", "2026-01-05 09:30"], "5m"),
             frame(["2026-01-05 09:15", "2026-01-05 09:30"], "15m"),
         ], ignore_index=True)
         reg = hist.copy()
         events, _, _ = prepare_phase_8_11(hist, reg, exclude_dates=())
         at_0915 = events.loc[events.timestamp == pd.Timestamp("2026-01-05 09:15")].iloc[0]
-        at_0930 = events.loc[events.timestamp == pd.Timestamp("2026-01-05 09:30")].iloc[0] if (events.timestamp == pd.Timestamp("2026-01-05 09:30")).any() else None
         self.assertFalse(bool(at_0915["htf_context_available"]))
         # At 09:20/09:25, the 09:15 15m candle is still forming.
         self.assertTrue(events.loc[events.timestamp == pd.Timestamp("2026-01-05 09:20"), "htf_context_available"].eq(False).all())
         self.assertTrue(events.loc[events.timestamp == pd.Timestamp("2026-01-05 09:25"), "htf_context_available"].eq(False).all())
         # At 09:30, the 09:15-09:30 15m candle has just closed.
-        row = events.loc[events.timestamp == pd.Timestamp("2026-01-05 09:30")]
-        self.assertTrue(row.empty)  # no 5m event supplied at 09:30
+        row = events.loc[events.timestamp == pd.Timestamp("2026-01-05 09:30")].iloc[0]
+        self.assertTrue(bool(row["htf_context_available"]))
+        self.assertEqual(row["htf_bar_start"], pd.Timestamp("2026-01-05 09:15"))
+        self.assertEqual(row["htf_available_at"], pd.Timestamp("2026-01-05 09:30"))
 
     def test_quarantines_historical_only_rows_and_excludes_partial_date(self):
         hist = pd.concat([
