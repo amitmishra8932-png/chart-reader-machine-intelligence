@@ -33,6 +33,13 @@ class FivePaisaLiveFeedTests(unittest.TestCase):
         self.assertEqual(tick["total_qty"], 1200)
         self.assertEqual(str(tick["timestamp"].tz), "Asia/Kolkata")
 
+    def test_rejects_provider_sentinel_tick_timestamp(self):
+        payload = [{
+            "Token": 2885, "LastRate": 100.0, "LastQty": 0, "TotalQty": 0,
+            "TickDt": "/Date(-62135596800000)/",
+        }]
+        self.assertEqual(parse_live_tick_message(json.dumps(payload), {2885: "RELIANCE"}), [])
+
     def test_parse_rejects_bad_json_and_skips_invalid_ticks(self):
         with self.assertRaises(ValueError):
             parse_live_tick_message("{bad-json", {})
