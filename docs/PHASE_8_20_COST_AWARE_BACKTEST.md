@@ -4,6 +4,8 @@
 
 This is a first mechanical simulation of the frozen Phase 8.19 classifier predictions. It is not an independent out-of-sample validation because the same 2026-07-22 to 2026-07-31 period was already used for Phase 8.19's final classification report. The simulation is retrospective and diagnostic only. It must not be used to tune the classifier or claim a tradable edge.
 
+> **Superseded results notice (17 November 2026):** Review found that the initial simulator held trades one candle longer than the documented horizon. The implementation and unit tests have been corrected on the PR branch. Every trade count, return, win rate, profit factor and direction statistic in the tables below was generated with the old timing and is therefore provisional/invalid. Do not use these figures. Re-run the experiment with the corrected simulator and replace all numerical tables before merging this phase.
+
 ## Frozen inputs and execution assumptions
 
 - Source: Phase 8.13 complete-session 5-minute research dataset.
