@@ -12,6 +12,7 @@ EXPECTED = {
     "5m": pd.date_range("09:15", "15:25", freq="5min").strftime("%H:%M").tolist(),
     "15m": pd.date_range("09:15", "15:15", freq="15min").strftime("%H:%M").tolist(),
 }
+EXPECTED_SETS = {timeframe: set(times) for timeframe, times in EXPECTED.items()}
 KEY = ["symbol", "timeframe", "timestamp"]
 OHLC = ["open", "high", "low", "close"]
 
@@ -52,9 +53,11 @@ def audit_session_coverage(
     data["session_date"] = data["timestamp"].dt.strftime("%Y-%m-%d")
     data["bar_time"] = data["timestamp"].dt.strftime("%H:%M")
     data["is_weekend"] = data["timestamp"].dt.dayofweek >= 5
-    data["on_expected_grid"] = data.apply(
-        lambda r: r["bar_time"] in EXPECTED[r["timeframe"]], axis=1
-    )
+    # Vectorized membership avoids a slow row-wise apply over hundreds of thousands of candles.
+    data["on_expected_grid"] = [
+        bar_time in EXPECTED_SETS[timeframe]
+        for bar_time, timeframe in zip(data["bar_time"], data["timeframe"])
+    ]
 
     summaries = []
     for (symbol, timeframe, session_date), group in data.groupby(
@@ -135,9 +138,10 @@ def classify_quarantine(quarantine: pd.DataFrame) -> pd.DataFrame:
     data["flat_ohlc"] = (
         data[OHLC].nunique(axis=1).eq(1)
     )
-    data["off_expected_grid"] = data.apply(
-        lambda r: r["bar_time"] not in EXPECTED[r["timeframe"]], axis=1
-    )
+    data["off_expected_grid"] = [
+        bar_time not in EXPECTED_SETS[timeframe]
+        for bar_time, timeframe in zip(data["bar_time"], data["timeframe"])
+    ]
     def reasons(row):
         tags = []
         if row["is_weekend"]:
