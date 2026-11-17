@@ -1,6 +1,6 @@
 # Chart Reader — Machine Intelligence
 
-An evidence-led stock-market chart research application built with Python and Streamlit. The initial build supports user-supplied historical OHLCV CSV files while 5paisa market-data access is being confirmed.
+An evidence-led stock-market chart research application built with Python and Streamlit. It supports user-supplied historical OHLCV files, 5paisa historical candles, and an authenticated read-only 5paisa live market monitor.
 
 ## Current capabilities
 
@@ -11,6 +11,8 @@ An evidence-led stock-market chart research application built with Python and St
 - Basic EMA trend state and confirmed swing-point markers
 - Forward-return outcome labels at 3, 6 and 12 candles
 - Download of analysed candles
+- 5paisa OAuth session authentication and historical NSE cash candles (5m/15m)
+- 5paisa Xstream WebSocket live tick monitor with completed 5m/15m OHLCV aggregation for a selected NIFTY 50 watchlist
 - Manual paper-trade journal with LONG/SHORT entries, stop/target validation, stop-risk and cash-exposure sizing, simulated exits, estimated-friction-adjusted P&L, performance metrics, and CSV export/restore
 - Unit tests and GitHub Actions test workflow
 
@@ -27,7 +29,20 @@ Required columns: `timestamp` (or `date`), `open`, `high`, `low`, `close`. `volu
 
 ## 5paisa integration
 
-The provider boundary is isolated in `providers/fivepaisa.py`. Authentication and endpoint calls will only be implemented against the current official 5paisa Xstream documentation and after the account's market-data permissions and callback configuration are verified. Do not commit API keys, passwords, encryption keys, request tokens or access tokens. Store secrets in Streamlit Community Cloud Secrets.
+The historical-data provider is isolated in `providers/fivepaisa.py`; live streaming is isolated in `providers/fivepaisa_live.py`. The live adapter uses the official Xstream WebSocket `MarketFeedV3` subscription for NSE cash instruments and aggregates received ticks into 5m/15m candles. The Streamlit Live Market tab is read-only. Before relying on it, verify the user's 5paisa market-data permissions, registered OAuth callback, live WebSocket access and actual tick timestamps. Do not commit API keys, passwords, encryption keys, request tokens or access tokens. Store long-lived credentials in Streamlit Community Cloud Secrets; the access token remains in the current Streamlit session.
+
+### Streamlit Community Cloud secrets
+
+Add these placeholders in the app's Secrets settings, replacing each value privately. The redirect URL must exactly match the callback registered in the 5paisa developer app.
+
+```toml
+FIVEPAISA_API_KEY = "your_app_key"
+FIVEPAISA_ENCRYPTION_KEY = "your_encryption_key"
+FIVEPAISA_USER_ID = "your_5paisa_user_id"
+FIVEPAISA_REDIRECT_URL = "https://your-app-name.streamlit.app/"
+```
+
+Never paste real credentials into GitHub source files or chat messages.
 
 ## Safety and research notes
 
@@ -43,9 +58,8 @@ The provider boundary is isolated in `providers/fivepaisa.py`. Authentication an
 ## Roadmap
 
 1. Expand CSV edge-case tests and data-quality reporting.
-2. Verify 5paisa OAuth and historical candle API access.
-3. Add a broker adapter with normalized candle schema.
-4. Add historical replay and leakage-safe evaluation.
-5. Add live read-only monitoring.
-6. Validate the manual paper-trading journal with controlled forward observations.
-7. Add automated signal replay only after data timestamps and signal rules are independently validated.
+2. Verify the 5paisa OAuth callback, historical API access and live WebSocket connection with the account.
+3. Validate live tick timestamps, volume deltas and candle boundaries against the 5paisa terminal.
+4. Recover the frozen Phase 8.13 dataset and rerun corrected cost-aware historical evaluation.
+5. Complete a separate untouched chronological holdout and controlled paper-trading observations.
+6. Add model-driven live signal display only after independent validation; keep order placement out of scope.
