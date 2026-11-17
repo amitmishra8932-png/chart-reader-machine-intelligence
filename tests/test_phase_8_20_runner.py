@@ -62,6 +62,7 @@ class Phase820RunnerTests(unittest.TestCase):
 
     def test_rejects_fractional_targets(self):
         frame = synthetic_chronological_dataset()
+        frame["target_3"] = frame["target_3"].astype(float)
         frame.loc[0, "target_3"] = 0.5
         with self.assertRaises(ValueError):
             fit_frozen_test_predictions(frame)
