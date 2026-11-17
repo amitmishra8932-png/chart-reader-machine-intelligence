@@ -27,6 +27,7 @@ class Phase813Tests(unittest.TestCase):
     def test_only_complete_5m_sessions_enter_chronological_dataset(self):
         frame = complete_candidates()
         partial = frame.iloc[:10].copy()
+        partial["symbol"] = "BBB"
         partial["session_quality"] = "intraday_gaps"
         off_grid = frame.iloc[[0]].copy()
         off_grid["timestamp"] = "2026-01-08 09:16"
