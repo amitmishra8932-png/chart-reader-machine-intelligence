@@ -585,7 +585,12 @@ with live_tab:
                     except queue.Empty:
                         break
                     if event["kind"] == "tick":
-                        st.session_state["fivepaisa_live_ticks"].append(event["data"])
+                        tick = event["data"]
+                        live_runtime["status"] = (
+                            "Receiving live ticks · latest "
+                            + pd.Timestamp(tick["timestamp"]).strftime("%H:%M:%S IST")
+                        )
+                        st.session_state["fivepaisa_live_ticks"].append(tick)
                         st.session_state["fivepaisa_live_ticks"] = st.session_state["fivepaisa_live_ticks"][-300:]
                     elif event["kind"] == "candle":
                         timeframe = event["timeframe"]
