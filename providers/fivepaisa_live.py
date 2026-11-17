@@ -109,6 +109,7 @@ class LiveCandleBuilder:
         self.interval_minutes = interval_minutes
         self._current: dict[str, dict] = {}
         self._last_total_qty: dict[str, tuple[str, int]] = {}
+        self._last_tick_timestamp: dict[str, pd.Timestamp] = {}
 
     def add_tick(self, tick: dict) -> dict | None:
         symbol = str(tick["symbol"])
@@ -120,8 +121,12 @@ class LiveCandleBuilder:
         bucket = timestamp.floor(f"{self.interval_minutes}min")
 
         current = self._current.get(symbol)
+        last_timestamp = self._last_tick_timestamp.get(symbol)
+        if last_timestamp is not None and timestamp < last_timestamp:
+            return None
         if current is not None and bucket < current["timestamp"]:
             return None
+        self._last_tick_timestamp[symbol] = timestamp
 
         total = tick.get("total_qty")
         last_qty = int(tick.get("last_qty") or 0)
