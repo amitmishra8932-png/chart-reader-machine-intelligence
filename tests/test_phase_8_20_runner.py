@@ -54,7 +54,7 @@ class Phase820RunnerTests(unittest.TestCase):
             self.assertEqual(frame["session_date"].nunique(), 1)
 
     def test_cost_sensitivity_has_all_frozen_scenarios(self):
-        _, report = run_experiment(synthetic_chronological_dataset())
+        _, _, report = run_experiment(synthetic_chronological_dataset())
         self.assertEqual(
             set(report["horizons"]["3"]["cost_sensitivity"]),
             {"0", "5", "10", "20", "30", "50"},
