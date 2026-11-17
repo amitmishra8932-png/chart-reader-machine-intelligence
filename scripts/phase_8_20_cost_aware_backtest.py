@@ -216,10 +216,11 @@ def run_experiment(
     frame: pd.DataFrame,
     *,
     cost_scenarios_bps: tuple[int, ...] = COST_SCENARIOS_BPS,
-) -> tuple[dict[int, pd.DataFrame], dict[str, Any]]:
-    """Run the frozen classifier and cost sensitivity on the held-out test window."""
+) -> tuple[dict[int, pd.DataFrame], dict[int, pd.DataFrame], dict[str, Any]]:
+    """Run frozen test predictions, event audit and cost sensitivity."""
     data = _validate_dataset(frame)
     predictions = fit_frozen_test_predictions(data)
+    audit_outputs: dict[int, pd.DataFrame] = {}
     report: dict[str, Any] = {
         "phase": "8.20_corrected_cost_aware_event_simulation",
         "model_config": MODEL_CONFIG,
@@ -251,13 +252,17 @@ def run_experiment(
             },
             "cost_sensitivity": {},
         }
+        audit_frame = None
         for cost_bps in cost_scenarios_bps:
-            trades = simulate_fixed_horizon_trades(
+            trades, current_audit = simulate_fixed_horizon_trades(
                 predicted,
                 horizon_bars=horizon,
                 interval_minutes=5,
                 round_trip_cost_bps=float(cost_bps),
+                return_audit=True,
             )
+            if audit_frame is None:
+                audit_frame = current_audit
             key = str(cost_bps)
             horizon_report["cost_sensitivity"][key] = {
                 **summarize_trades(trades),
@@ -266,8 +271,16 @@ def run_experiment(
                 "by_symbol": _group_summary(trades, "symbol"),
                 "by_date": _group_summary(trades, "session_date"),
             }
+        assert audit_frame is not None
+        audit_outputs[horizon] = audit_frame
+        horizon_report["event_audit_reason_counts"] = {
+            str(reason): int(count)
+            for reason, count in audit_frame["reason"].value_counts().sort_index().items()
+        }
+        horizon_report["accepted_events"] = int((audit_frame["status"] == "accepted").sum())
+        horizon_report["skipped_events"] = int((audit_frame["status"] == "skipped").sum())
         report["horizons"][str(horizon)] = horizon_report
-    return predictions, report
+    return predictions, audit_outputs, report
 
 
 def validate_phase_8_19_manifest(manifest: dict[str, Any]) -> None:
@@ -333,12 +346,15 @@ def main() -> None:
     manifest = json.loads(manifest_bytes.decode("utf-8"))
     validate_phase_8_19_manifest(manifest)
     frame = pd.read_csv(source)
-    predictions, report = run_experiment(frame)
+    predictions, audit_outputs, report = run_experiment(frame)
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
     for horizon, predicted in predictions.items():
         predicted.to_csv(output / f"phase_8_20_test_predictions_{horizon}bar.csv", index=False)
+        audit_outputs[horizon].to_csv(
+            output / f"phase_8_20_event_audit_{horizon}bar.csv", index=False
+        )
     report["input"] = {
         "filename": source.name,
         "sha256": sha256,
