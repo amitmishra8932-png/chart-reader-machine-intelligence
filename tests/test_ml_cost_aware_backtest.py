@@ -69,6 +69,10 @@ class CostAwareBacktestTests(unittest.TestCase):
             simulate_fixed_horizon_trades(
                 frame, horizon_bars=2, round_trip_cost_bps=-1
             )
+        with self.assertRaises(ValueError):
+            simulate_fixed_horizon_trades(
+                sample_rows(), horizon_bars=2, round_trip_cost_bps="not-a-number"
+            )
         frame.loc[0, "prediction"] = 2
         with self.assertRaises(ValueError):
             simulate_fixed_horizon_trades(frame, horizon_bars=2)
@@ -80,6 +84,35 @@ class CostAwareBacktestTests(unittest.TestCase):
         self.assertEqual(len(trades), 2)
         self.assertIn("neutral_prediction", set(audit["reason"]))
         self.assertEqual(int((audit["status"] == "accepted").sum()), 2)
+
+    def test_event_audit_preserves_overlap_and_insufficient_horizon_skips(self):
+        frame = sample_rows()
+        frame["prediction"] = 1
+        trades, audit = simulate_fixed_horizon_trades(
+            frame, horizon_bars=2, return_audit=True
+        )
+        self.assertEqual(len(trades), 2)
+        self.assertIn("overlap_or_exit_bar_cooldown", set(audit["reason"]))
+        self.assertIn("insufficient_horizon_bars", set(audit["reason"]))
+
+    def test_event_audit_identifies_entry_and_holding_window_gaps(self):
+        frame = sample_rows()
+        frame["prediction"] = 0
+        frame.loc[0, "prediction"] = 1
+        frame.loc[1, "timestamp"] = pd.Timestamp("2026-01-05 09:21")
+        _, audit = simulate_fixed_horizon_trades(
+            frame, horizon_bars=2, return_audit=True
+        )
+        self.assertIn("entry_timestamp_gap", set(audit["reason"]))
+
+        frame = sample_rows()
+        frame["prediction"] = 0
+        frame.loc[0, "prediction"] = 1
+        frame.loc[2, "timestamp"] = pd.Timestamp("2026-01-05 09:26")
+        _, audit = simulate_fixed_horizon_trades(
+            frame, horizon_bars=2, return_audit=True
+        )
+        self.assertIn("holding_window_gap", set(audit["reason"]))
 
     def test_rejects_session_date_mismatch(self):
         frame = sample_rows()
