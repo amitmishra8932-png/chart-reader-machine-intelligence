@@ -2,7 +2,7 @@
 
 ## Status
 
-**Implementation and runner tests are being validated. Corrected empirical results are pending. This phase is not approved for deployment.**
+**Implementation and runner tests pass GitHub Actions (run #213). Corrected empirical results are pending. This phase is not approved for deployment.**
 
 This phase converts frozen model predictions into retrospective, non-overlapping event trades. It is diagnostic research, not independent validation: the evaluation window was already used for Phase 8.19 model reporting.
 
