@@ -1,7 +1,7 @@
 """Reproduce Phase 8.20 cost-aware event diagnostics from a Phase 8.13 CSV.
 
 Example:
-python scripts/phase_8_20_cost_aware_backtest.py phase_8_13_output/phase_8_13_chronological_research_dataset.csv
+python scripts/phase_8_20_cost_aware_backtest.py phase_8_13_output/phase_8_13_chronological_research_dataset.csv --manifest-json phase_8_13_output/phase_8_13_dataset_manifest.json
 
 The model is frozen to the Phase 8.17/8.19 documented logistic-regression
 protocol. Training and preprocessing use training rows only. Test labels are
