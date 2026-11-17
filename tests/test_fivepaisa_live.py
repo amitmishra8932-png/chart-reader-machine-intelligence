@@ -85,6 +85,23 @@ class FivePaisaLiveFeedTests(unittest.TestCase):
         )
         self.assertEqual(completed["volume"], 20)
 
+    def test_ignores_out_of_order_tick_inside_current_candle(self):
+        builder = LiveCandleBuilder(5)
+        base = pd.Timestamp("2026-11-18 09:15", tz="Asia/Kolkata")
+        def tick(minute, price, total):
+            return {
+                "timestamp": base + pd.Timedelta(minutes=minute),
+                "symbol": "ABC", "last_price": price,
+                "total_qty": total, "last_qty": 1,
+            }
+
+        builder.add_tick(tick(0, 100, 100))
+        builder.add_tick(tick(2, 102, 150))
+        builder.add_tick(tick(1, 99, 180))
+        completed = builder.add_tick(tick(5, 101, 200))
+        self.assertEqual(completed["close"], 102)
+        self.assertEqual(completed["volume"], 51)
+
     def test_rejects_unsupported_candle_interval(self):
         with self.assertRaises(ValueError):
             LiveCandleBuilder(3)
