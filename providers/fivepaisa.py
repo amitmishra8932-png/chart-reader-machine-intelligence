@@ -179,11 +179,11 @@ def parse_scrip_master(csv_text: str) -> pd.DataFrame:
 def resolve_scrip_codes_via_market_feed(
     access_token: str, api_key: str, client_code: str, symbols: list[str],
 ) -> dict[str, int]:
-    """Resolve NSE cash symbols to 5paisa ScripCodes using the authenticated
-    MarketFeed API's documented ScripData input and returned Token field.
+    """Resolve NSE cash ScripCodes using the documented 5paisa MarketFeed API.
 
-    This avoids depending on the separate public ScripMaster download cache.
-    It only requests quotes/identifiers; it never places or modifies orders.
+    The documented response exposes Token but does not promise a Symbol field.
+    Therefore the returned rows are paired with the requested ScripData entries
+    in request order, and a row-count mismatch fails closed.
     """
     cleaned = list(dict.fromkeys(str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()))
     if not cleaned:
@@ -191,16 +191,14 @@ def resolve_scrip_codes_via_market_feed(
     if not access_token or not api_key or not client_code:
         raise ValueError("5paisa session, API key and client code are required to resolve stock codes.")
     payload = {
-        "head": {"key": api_key, "requestCode": "5PMF"},
+        "head": {"key": api_key},
         "body": {
             "ClientCode": client_code,
-            "COUNT": client_code,
-            "ClientLoginType": 0,
             "MarketFeedData": [
                 {"Exch": "N", "ExchType": "C", "ScripCode": "0", "ScripData": f"{symbol}_EQ"}
                 for symbol in cleaned
             ],
-            "LastRequestTime": f"/Date({int(pd.Timestamp.now().timestamp())})/",
+            "LastRequestTime": "/Date(0)/",
             "RefreshRate": "H",
         },
     }
@@ -212,7 +210,6 @@ def resolve_scrip_codes_via_market_feed(
                 "Authorization": "Bearer " + access_token,
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "5Paisa-API-Uid": MARKET_FEED_API_UID,
             },
             timeout=30,
         )
@@ -225,24 +222,31 @@ def resolve_scrip_codes_via_market_feed(
 
     body = result.get("body") or result.get("Body") or {}
     head = result.get("head") or result.get("Head") or {}
-    status = body.get("Status", body.get("status", head.get("status")))
-    message = body.get("Message") or body.get("message") or head.get("statusDescription")
+    head_status = head.get("status", head.get("Status"))
+    status = body.get("Status", body.get("status", head_status))
+    message = body.get("Message") or body.get("message") or head.get("statusDescription") or head.get("StatusDescription")
     if status not in (None, 0, "0", "Success", "success"):
         raise RuntimeError("5paisa MarketFeed could not resolve stock codes: " + str(message or status))
     rows = body.get("Data") or body.get("data") or []
+    if not isinstance(rows, list) or len(rows) != len(cleaned):
+        raise RuntimeError(
+            "5paisa MarketFeed returned an unexpected number of instruments "
+            f"(requested {len(cleaned)}, received {len(rows) if isinstance(rows, list) else 'invalid'}). "
+            "No partial subscription was started."
+        )
     resolved = {}
-    for row in rows:
-        symbol = row.get("Symbol") or row.get("symbol")
+    for symbol, row in zip(cleaned, rows):
+        if not isinstance(row, dict):
+            raise RuntimeError(f"5paisa MarketFeed returned an invalid response row for {symbol}.")
         token = row.get("Token") or row.get("token") or row.get("ScripCode") or row.get("scripCode")
-        if symbol and token:
-            try:
-                resolved[_normalise_symbol(symbol)] = int(token)
-            except (TypeError, ValueError):
-                continue
-    missing = [symbol for symbol in cleaned if _normalise_symbol(symbol) not in resolved]
-    if missing:
-        raise RuntimeError("5paisa MarketFeed did not return a valid NSE cash ScripCode for: " + ", ".join(missing))
-    return {symbol: resolved[_normalise_symbol(symbol)] for symbol in cleaned}
+        try:
+            code = int(token)
+        except (TypeError, ValueError, OverflowError):
+            raise RuntimeError(f"5paisa MarketFeed did not return a valid NSE cash ScripCode for {symbol}.")
+        if code <= 0:
+            raise RuntimeError(f"5paisa MarketFeed returned an invalid NSE cash ScripCode for {symbol}.")
+        resolved[symbol] = code
+    return resolved
 
 
 def fetch_scrip_master() -> pd.DataFrame:
