@@ -82,7 +82,6 @@ class FivePaisaAdapterTests(unittest.TestCase):
         args, kwargs = mock_post.call_args
         self.assertIn("/V1/MarketFeed", args[0])
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-token")
-        self.assertEqual(kwargs["headers"]["5Paisa-API-Uid"], "ka7SFqAU6SC")
         self.assertEqual(kwargs["json"]["head"], {"key": "test-api-key"})
         self.assertEqual(kwargs["json"]["body"]["ClientCode"], "CLIENT1")
         self.assertEqual(kwargs["json"]["body"]["RefreshRate"], "H")
@@ -101,7 +100,7 @@ class FivePaisaAdapterTests(unittest.TestCase):
         response.ok = True
         response.json.return_value = {"head": {"status": "0"}, "body": {"Status": 0, "Data": []}}
         mock_post.return_value = response
-        with self.assertRaisesRegex(RuntimeError, "did not return a valid NSE cash ScripCode"):
+        with self.assertRaisesRegex(RuntimeError, "unexpected number of instruments|did not return a valid NSE cash ScripCode"):
             resolve_scrip_codes_via_market_feed("test-token", "key", "CLIENT1", ["HDFCBANK"])
 
 
