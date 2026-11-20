@@ -594,8 +594,17 @@ with live_tab:
                         st.session_state["fivepaisa_live_ticks"] = st.session_state["fivepaisa_live_ticks"][-300:]
                     elif event["kind"] == "candle":
                         timeframe = event["timeframe"]
-                        st.session_state["fivepaisa_live_bars"][timeframe].append(event["data"])
-                        st.session_state["fivepaisa_live_bars"][timeframe] = st.session_state["fivepaisa_live_bars"][timeframe][-300:]
+                        bars = st.session_state["fivepaisa_live_bars"][timeframe]
+                        bar = event["data"]
+                        bars.append(bar)
+                        # Keep a rolling history per symbol, not one shared
+                        # 300-event buffer for the entire watchlist.
+                        symbol_indices = [
+                            index for index, item in enumerate(bars)
+                            if item.get("symbol") == bar.get("symbol")
+                        ]
+                        if len(symbol_indices) > 300:
+                            del bars[symbol_indices[0]]
                     elif event["kind"] == "status":
                         live_runtime["status"] = event["message"]
                     elif event["kind"] == "error":
