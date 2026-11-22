@@ -27,6 +27,7 @@ from providers.fivepaisa import (
     resolve_scrip_codes_via_market_feed, fetch_historical_candles,
 )
 from providers.fivepaisa_live import FivePaisaLiveFeed, LiveCandleBuilder
+from nse_bhavcopy.service import ingest_trade_date
 
 st.set_page_config(
     page_title="Chart Reader | Machine Intelligence",
@@ -87,8 +88,8 @@ with st.sidebar:
         st.warning("Configure FIVEPAISA_API_KEY, FIVEPAISA_ENCRYPTION_KEY, FIVEPAISA_USER_ID and FIVEPAISA_REDIRECT_URL in Streamlit Secrets.")
 
 st.subheader("Workspace")
-overview, chart_tab, intelligence, structure_tab, historical_tab, live_tab, paper_tab, library_tab, research = st.tabs(
-    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Historical Data Centre", "Live Market", "Paper trading", "Pattern library", "Research & validation"]
+overview, chart_tab, intelligence, structure_tab, historical_tab, live_tab, paper_tab, library_tab, research, bhavcopy_tab = st.tabs(
+    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Historical Data Centre", "Live Market", "Paper trading", "Pattern library", "Research & validation", "NSE Bhavcopy"]
 )
 
 if "paper_trades" not in st.session_state:
@@ -1183,6 +1184,34 @@ with research:
         st.download_button("Download historical-only quarantine CSV", data=st.session_state["phase_8_11_quarantine"].to_csv(index=False).encode("utf-8"), file_name="phase_8_11_historical_only_quarantine.csv", mime="text/csv", use_container_width=True)
         st.download_button("Download Phase 8.11 audit manifest", data=json.dumps(p811_manifest, indent=2, allow_nan=False).encode("utf-8"), file_name="phase_8_11_audit_manifest.json", mime="application/json", use_container_width=True)
         st.info("Research-only data preparation. Missing candles are not synthesized; stale higher-timeframe context is flagged; no model, trade signal or order is created.")
+
+
+with bhavcopy_tab:
+    st.markdown("### Official NSE EOD Bhavcopy")
+    st.caption("CM-UDiFF Common Bhavcopy Final ZIP | NIFTY 50 research scope | read-only import")
+    st.info(
+        "This is end-of-day data for historical context. It does not replace 5m/15m "
+        "5paisa candles, synthesize intraday bars, train models or change existing research metrics."
+    )
+    bhavcopy_date = st.date_input("NSE trading date", value=date.today(), key="chart_reader_nse_bhavcopy_date")
+    if st.button("Download and import NSE Bhavcopy", type="primary", key="chart_reader_import_bhavcopy", use_container_width=True):
+        try:
+            with st.spinner("Downloading and validating the official NSE final ZIP..."):
+                result = ingest_trade_date(bhavcopy_date.isoformat(), Path("data/nse_bhavcopy/bhavcopy.sqlite3"))
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Valid rows", f"{result['valid_rows']:,}")
+            c2.metric("Quarantined rows", f"{result['quarantined_rows']:,}")
+            c3.metric("Import status", result["status"])
+            st.caption(f"SHA-256: {result['sha256']}")
+            st.caption(f"Original ZIP preserved at: {result['raw_archive_path']}")
+        except Exception as exc:
+            st.error(f"Bhavcopy import failed safely: {exc}")
+    st.caption(
+        "This database and raw archive are separate from 5paisa history, paper trades, "
+        "ML datasets and all existing Chart Reader records. Streamlit local runtime "
+        "storage may reset after redeployment; verify persistent storage before relying "
+        "on this as the sole historical archive."
+    )
 
 st.divider()
 st.caption(f"Chart Reader development build · {datetime.now().strftime('%d %b %Y')}")
