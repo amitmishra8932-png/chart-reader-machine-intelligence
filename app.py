@@ -27,7 +27,7 @@ from providers.fivepaisa import (
     resolve_scrip_codes_via_market_feed, fetch_historical_candles,
 )
 from providers.fivepaisa_live import FivePaisaLiveFeed, LiveCandleBuilder
-from nse_bhavcopy.service import ingest_archive, ingest_trade_date
+from nse_bhavcopy.service import get_import_status, ingest_archive, ingest_trade_date
 
 st.set_page_config(
     page_title="Chart Reader | Machine Intelligence",
@@ -1232,6 +1232,11 @@ with bhavcopy_tab:
                 f"Direct NSE download failed safely: {exc}. "
                 "Use the upload control above with the official ZIP downloaded from NSE."
             )
+    store_status = get_import_status(bhavcopy_db)
+    status_cols = st.columns(3)
+    status_cols[0].metric("Persisted rows", f"{store_status['stored_rows']:,}")
+    status_cols[1].metric("Trading dates stored", f"{store_status['trading_dates']:,}")
+    status_cols[2].metric("Import runs", f"{store_status['ingestion_runs']:,}")
     st.caption(
         "This database and raw archive are separate from 5paisa history, paper trades, "
         "ML datasets and all existing Chart Reader records. Distinct ZIPs for one date "
