@@ -33,3 +33,10 @@ def ingest_trade_date(trade_date: str, database_path: str | Path,
         source_filename=filename,
         raw_archive_root=raw_archive_root,
     )
+
+from .storage import get_bhavcopy_status
+
+
+def get_import_status(database_path: str | Path) -> dict:
+    """Expose read-only persisted-store counts to the Streamlit UI."""
+    return get_bhavcopy_status(database_path)
