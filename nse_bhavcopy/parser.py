@@ -119,7 +119,7 @@ def parse_bhavcopy_zip(payload: bytes, requested_date: str) -> tuple[list[dict],
         member = csv_members[0]
         if not re.fullmatch(r"BhavCopy_NSE_CM_0_0_0_\d{8}_F_0000\.csv", member.filename.split("/")[-1], re.I):
             raise BhavcopyFormatError("unexpected NSE CM final Bhavcopy member filename")
-        filename_date = member.filename.split("/")[-1].split("_")[5]
+        filename_date = member.filename.split("/")[-1].split("_")[6]
         if filename_date != expected.replace("-", ""):
             raise BhavcopyFormatError("archive filename date does not match requested date")
         if member.file_size > MAX_MEMBER_BYTES:
