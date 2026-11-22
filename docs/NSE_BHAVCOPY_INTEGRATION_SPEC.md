@@ -75,3 +75,9 @@ Bhavcopy is end-of-day data. It may enrich daily context, historical features an
 
 ## Implementation note
 The NSE report catalogue currently identifies CM-UDiFF Common Bhavcopy Final (ZIP) as the current report and marks the old CM Bhavcopy CSV and CM Common Bhavcopy CSV reports discontinued from 8 July 2024. Reconfirm report naming and archive availability during each integration test; do not hardcode a web-page download token.
+
+
+## Raw archive immutability and manual import
+- Store raw archives under `raw_bhavcopy/YYYY/MM/DD/<sha256>.zip`; never overwrite an archive for a date when the downloaded bytes differ.
+- Both apps expose a manual ZIP upload path as a fallback when NSE blocks automated HTTP downloads. Uploaded archives pass through the same parser, date/filename checks, SHA-256, quarantine and idempotent storage path as downloaded archives.
+- A manual upload is not considered an NSE-origin authenticated transport; its file content is still validated against the NSE CM-UDiFF contract.
