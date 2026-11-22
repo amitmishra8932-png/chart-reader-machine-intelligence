@@ -179,13 +179,6 @@ def parse_scrip_master(csv_text: str) -> pd.DataFrame:
             "5paisa scrip master contains conflicting NSE cash codes for: "
             + ", ".join(conflicting[:10])
         )
-    conflicts = frame.groupby("symbol_key")["ScripCode"].nunique()
-    conflicting = conflicts[conflicts > 1].index.tolist()
-    if conflicting:
-        raise RuntimeError(
-            "5paisa scrip master contains conflicting NSE cash codes for: "
-            + ", ".join(conflicting[:10])
-        )
     return frame.drop_duplicates("symbol_key")
 
 
