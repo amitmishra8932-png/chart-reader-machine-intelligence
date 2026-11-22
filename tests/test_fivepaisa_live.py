@@ -33,6 +33,14 @@ class FivePaisaLiveFeedTests(unittest.TestCase):
         self.assertEqual(tick["total_qty"], 1200)
         self.assertEqual(str(tick["timestamp"].tz), "Asia/Kolkata")
 
+    def test_ignores_nonfinite_prices_unknown_tokens_and_non_nse_segments(self):
+        payload = [
+            {"Exch":"N", "ExchType":"C", "Token":2885, "LastRate":"NaN", "TickDt":"2026-11-18 09:15:00"},
+            {"Exch":"B", "ExchType":"C", "Token":2885, "LastRate":100, "TickDt":"2026-11-18 09:15:00"},
+            {"Exch":"N", "ExchType":"C", "Token":9999, "LastRate":100, "TickDt":"2026-11-18 09:15:00"},
+        ]
+        self.assertEqual(parse_live_tick_message(json.dumps(payload), {2885:"RELIANCE"}), [])
+
     def test_rejects_provider_sentinel_tick_timestamp(self):
         payload = [{
             "Token": 2885, "LastRate": 100.0, "LastQty": 0, "TotalQty": 0,
@@ -108,6 +116,11 @@ class FivePaisaLiveFeedTests(unittest.TestCase):
         completed = builder.add_tick(tick(5, 101, 200))
         self.assertEqual(completed["close"], 102)
         self.assertEqual(completed["volume"], 51)
+
+    def test_rejects_duplicate_scrip_codes_in_subscription(self):
+        from providers.fivepaisa_live import FivePaisaLiveFeed
+        with self.assertRaisesRegex(ValueError, "unique"):
+            FivePaisaLiveFeed("token", "client", "key", {"ABC":1,"XYZ":1}, lambda tick: None)
 
     def test_rejects_unsupported_candle_interval(self):
         with self.assertRaises(ValueError):
