@@ -67,6 +67,14 @@ class BhavcopyParserTests(unittest.TestCase):
         with self.assertRaises(BhavcopyFormatError):
             parse_bhavcopy_zip(b"not zip", "2026-11-20")
 
+    def test_duplicate_source_key_is_quarantined(self):
+        rows, bad = parse_bhavcopy_zip(
+            fixture_zip(rows=[fixture_row(), fixture_row()]), "2026-11-20"
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("duplicate", bad[0]["reason"])
+
 
 class BhavcopyStorageTests(unittest.TestCase):
     def test_reimport_is_idempotent_and_raw_archive_is_preserved(self):
