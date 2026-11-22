@@ -138,11 +138,17 @@ def parse_bhavcopy_zip(payload: bytes, requested_date: str) -> tuple[list[dict],
         raise BhavcopyFormatError("missing required UDiFF tags: " + ", ".join(sorted(missing)))
 
     valid, quarantined = [], []
+    seen_keys = set()
     for line_number, raw in enumerate(reader, start=2):
         if not raw or not any(str(v or "").strip() for v in raw.values()):
             continue
         try:
-            valid.append(_normalize(raw, expected))
+            normalized = _normalize(raw, expected)
+            key = (normalized["trade_date"], normalized["symbol"], normalized["series"])
+            if key in seen_keys:
+                raise ValueError("duplicate (trade_date, symbol, series) within source file")
+            seen_keys.add(key)
+            valid.append(normalized)
         except ValueError as exc:
             quarantined.append({
                 "line_number": line_number,
