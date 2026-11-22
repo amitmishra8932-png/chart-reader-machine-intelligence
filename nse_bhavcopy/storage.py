@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 from pathlib import Path
 
@@ -45,6 +44,7 @@ def initialize_database(database_path: str | Path) -> None:
             trade_date TEXT NOT NULL,
             source_url TEXT NOT NULL,
             source_filename TEXT NOT NULL,
+            raw_archive_path TEXT NOT NULL,
             source_sha256 TEXT NOT NULL,
             parser_version TEXT NOT NULL,
             valid_rows INTEGER NOT NULL,
@@ -65,13 +65,27 @@ def initialize_database(database_path: str | Path) -> None:
         """)
 
 
+def _preserve_raw_archive(payload: bytes, database_path: Path, trade_date: str,
+                          raw_archive_root: str | Path | None) -> Path:
+    root = Path(raw_archive_root) if raw_archive_root else database_path.parent / "raw_bhavcopy"
+    year, month, day = trade_date.split("-")
+    destination = root / year / month / f"{day}.zip"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(".zip.tmp")
+    temporary.write_bytes(payload)
+    temporary.replace(destination)
+    return destination
+
+
 def ingest_bhavcopy(payload: bytes, database_path: str | Path, trade_date: str,
-                    source_url: str, source_filename: str) -> dict:
-    """Validate then atomically upsert records and audit the import."""
+                    source_url: str, source_filename: str,
+                    raw_archive_root: str | Path | None = None) -> dict:
+    """Validate, preserve the source ZIP, then atomically upsert records and audit the import."""
     rows, quarantined = parse_bhavcopy_zip(payload, trade_date)
     digest = hashlib.sha256(payload).hexdigest()
-    initialize_database(database_path)
     path = Path(database_path)
+    initialize_database(path)
+    raw_path = _preserve_raw_archive(payload, path, trade_date, raw_archive_root)
     columns = (
         "trade_date", "symbol", "series", "business_date", "segment", "source",
         "instrument_type", "isin", "instrument_name", "open", "high", "low",
@@ -89,11 +103,11 @@ def ingest_bhavcopy(payload: bytes, database_path: str | Path, trade_date: str,
         connection.execute("PRAGMA foreign_keys=ON")
         cursor = connection.execute(
             """INSERT INTO ingestion_runs
-            (trade_date,source_url,source_filename,source_sha256,parser_version,
-             valid_rows,quarantined_rows,status)
-            VALUES (?,?,?,?,?,?,?,?)""",
-            (trade_date, source_url, source_filename, digest, PARSER_VERSION,
-             len(rows), len(quarantined), status),
+            (trade_date,source_url,source_filename,raw_archive_path,source_sha256,
+             parser_version,valid_rows,quarantined_rows,status)
+            VALUES (?,?,?,?,?,?,?,?,?)""",
+            (trade_date, source_url, source_filename, str(raw_path), digest,
+             PARSER_VERSION, len(rows), len(quarantined), status),
         )
         run_id = cursor.lastrowid
         connection.executemany(insert_sql, [
@@ -109,5 +123,5 @@ def ingest_bhavcopy(payload: bytes, database_path: str | Path, trade_date: str,
     return {
         "run_id": run_id, "trade_date": trade_date, "sha256": digest,
         "valid_rows": len(rows), "quarantined_rows": len(quarantined),
-        "status": status, "database_path": str(path),
+        "status": status, "database_path": str(path), "raw_archive_path": str(raw_path),
     }
