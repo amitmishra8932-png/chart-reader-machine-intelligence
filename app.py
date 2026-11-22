@@ -27,7 +27,7 @@ from providers.fivepaisa import (
     resolve_scrip_codes_via_market_feed, fetch_historical_candles,
 )
 from providers.fivepaisa_live import FivePaisaLiveFeed, LiveCandleBuilder
-from nse_bhavcopy.service import ingest_trade_date
+from nse_bhavcopy.service import ingest_archive, ingest_trade_date
 
 st.set_page_config(
     page_title="Chart Reader | Machine Intelligence",
@@ -1194,23 +1194,49 @@ with bhavcopy_tab:
         "5paisa candles, synthesize intraday bars, train models or change existing research metrics."
     )
     bhavcopy_date = st.date_input("NSE trading date", value=date.today(), key="chart_reader_nse_bhavcopy_date")
-    if st.button("Download and import NSE Bhavcopy", type="primary", key="chart_reader_import_bhavcopy", use_container_width=True):
+    bhavcopy_db = Path("data/nse_bhavcopy/bhavcopy.sqlite3")
+    uploaded_bhavcopy = st.file_uploader(
+        "Upload official NSE CM-UDiFF ZIP (recommended fallback)",
+        type=["zip"], key="chart_reader_bhavcopy_zip_upload",
+    )
+    if st.button(
+        "Import uploaded NSE ZIP", type="primary", key="chart_reader_import_uploaded_bhavcopy",
+        disabled=uploaded_bhavcopy is None, use_container_width=True,
+    ):
         try:
-            with st.spinner("Downloading and validating the official NSE final ZIP..."):
-                result = ingest_trade_date(bhavcopy_date.isoformat(), Path("data/nse_bhavcopy/bhavcopy.sqlite3"))
+            with st.spinner("Validating and importing the uploaded NSE ZIP..."):
+                result = ingest_archive(
+                    uploaded_bhavcopy.getvalue(), bhavcopy_date.isoformat(), bhavcopy_db,
+                    source_filename=uploaded_bhavcopy.name,
+                )
             c1, c2, c3 = st.columns(3)
             c1.metric("Valid rows", f"{result['valid_rows']:,}")
             c2.metric("Quarantined rows", f"{result['quarantined_rows']:,}")
             c3.metric("Import status", result["status"])
             st.caption(f"SHA-256: {result['sha256']}")
-            st.caption(f"Original ZIP preserved at: {result['raw_archive_path']}")
+            st.caption(f"Preserved ZIP: {result['raw_archive_path']}")
         except Exception as exc:
-            st.error(f"Bhavcopy import failed safely: {exc}")
+            st.error(f"Uploaded Bhavcopy import failed safely: {exc}")
+    if st.button("Download and import from NSE", key="chart_reader_download_bhavcopy", use_container_width=True):
+        try:
+            with st.spinner("Downloading and validating the official NSE final ZIP..."):
+                result = ingest_trade_date(bhavcopy_date.isoformat(), bhavcopy_db)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Valid rows", f"{result['valid_rows']:,}")
+            c2.metric("Quarantined rows", f"{result['quarantined_rows']:,}")
+            c3.metric("Import status", result["status"])
+            st.caption(f"SHA-256: {result['sha256']}")
+            st.caption(f"Preserved ZIP: {result['raw_archive_path']}")
+        except Exception as exc:
+            st.error(
+                f"Direct NSE download failed safely: {exc}. "
+                "Use the upload control above with the official ZIP downloaded from NSE."
+            )
     st.caption(
         "This database and raw archive are separate from 5paisa history, paper trades, "
-        "ML datasets and all existing Chart Reader records. Streamlit local runtime "
-        "storage may reset after redeployment; verify persistent storage before relying "
-        "on this as the sole historical archive."
+        "ML datasets and all existing Chart Reader records. Distinct ZIPs for one date "
+        "are retained by SHA-256. Streamlit local runtime storage may reset after "
+        "redeployment; verify persistent storage before relying on this as the sole archive."
     )
 
 st.divider()
