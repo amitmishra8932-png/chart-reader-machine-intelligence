@@ -6,6 +6,7 @@ on:
     paths:
       - "nse_bhavcopy/**"
       - "tests/test_bhavcopy.py"
+      - "app.py"
       - ".github/workflows/bhavcopy-tests.yml"
   pull_request:
     paths:
@@ -22,6 +23,6 @@ jobs:
         with:
           python-version: "3.11"
       - name: Compile isolated integration package
-        run: python -m compileall -q nse_bhavcopy tests/test_bhavcopy.py
+        run: python -m compileall -q app.py nse_bhavcopy tests/test_bhavcopy.py
       - name: Run fixture-based integration tests
         run: python -m unittest discover -s tests -p "test_bhavcopy.py" -v
