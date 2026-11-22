@@ -121,6 +121,19 @@ class BhavcopyStorageTests(unittest.TestCase):
             self.assertEqual(len(raw_files), 1)
             self.assertEqual(raw_files[0].read_bytes(), payload)
 
+    def test_persisted_status_counts_rows_and_reimports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "bhavcopy.sqlite3"
+            payload = fixture_zip()
+            ingest_bhavcopy(payload, database, "2026-11-20", "manual-upload://test", "file.zip")
+            ingest_bhavcopy(payload, database, "2026-11-20", "manual-upload://test", "file.zip")
+            from nse_bhavcopy.storage import get_bhavcopy_status
+            status = get_bhavcopy_status(database)
+            self.assertEqual(status["stored_rows"], 1)
+            self.assertEqual(status["trading_dates"], 1)
+            self.assertEqual(status["ingestion_runs"], 2)
+            self.assertEqual(status["quarantined_rows_total"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
