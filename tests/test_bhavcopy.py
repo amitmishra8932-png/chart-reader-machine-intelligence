@@ -18,16 +18,20 @@ HEADERS = [
 ]
 
 
+def fixture_row():
+    return {
+        "TradDt": "2026-11-20", "BizDt": "2026-11-20", "Sgmt": "CM", "Src": "NSE",
+        "FinInstrmTp": "STK", "ISIN": "INE002A01018", "TckrSymb": "RELIANCE",
+        "SctySrs": "EQ", "FinInstrmNm": "RELIANCE INDUSTRIES",
+        "OpnPric": "100", "HghPric": "110", "LwPric": "95", "ClsPric": "105",
+        "LastPric": "105", "PrvsClsgPric": "99", "AvrgPric": "103",
+        "TtlTradgVol": "1000", "TtlTrfVal": "103000", "TtlNbOfTxsExctd": "100",
+    }
+
+
 def fixture_zip(trade_date="2026-11-20", rows=None):
     if rows is None:
-        rows = [{
-            "TradDt": trade_date, "BizDt": trade_date, "Sgmt": "CM", "Src": "NSE",
-            "FinInstrmTp": "STK", "ISIN": "INE002A01018", "TckrSymb": "RELIANCE",
-            "SctySrs": "EQ", "FinInstrmNm": "RELIANCE INDUSTRIES",
-            "OpnPric": "100", "HghPric": "110", "LwPric": "95", "ClsPric": "105",
-            "LastPric": "105", "PrvsClsgPric": "99", "AvrgPric": "103",
-            "TtlTradgVol": "1000", "TtlTrfVal": "103000", "TtlNbOfTxsExctd": "100",
-        }]
+        rows = [fixture_row()]
     text = io.StringIO()
     writer = csv.DictWriter(text, fieldnames=HEADERS)
     writer.writeheader()
@@ -64,19 +68,8 @@ class BhavcopyParserTests(unittest.TestCase):
             parse_bhavcopy_zip(b"not zip", "2026-11-20")
 
 
-def fixture_row():
-    return {
-        "TradDt": "2026-11-20", "BizDt": "2026-11-20", "Sgmt": "CM", "Src": "NSE",
-        "FinInstrmTp": "STK", "ISIN": "INE002A01018", "TckrSymb": "RELIANCE",
-        "SctySrs": "EQ", "FinInstrmNm": "RELIANCE INDUSTRIES",
-        "OpnPric": "100", "HghPric": "110", "LwPric": "95", "ClsPric": "105",
-        "LastPric": "105", "PrvsClsgPric": "99", "AvrgPric": "103",
-        "TtlTradgVol": "1000", "TtlTrfVal": "103000", "TtlNbOfTxsExctd": "100",
-    }
-
-
 class BhavcopyStorageTests(unittest.TestCase):
-    def test_reimport_is_idempotent(self):
+    def test_reimport_is_idempotent_and_raw_archive_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "bhavcopy.sqlite3"
             payload = fixture_zip()
@@ -84,6 +77,8 @@ class BhavcopyStorageTests(unittest.TestCase):
             second = ingest_bhavcopy(payload, database, "2026-11-20", "https://nse.test/file.zip", "file.zip")
             self.assertEqual(first["valid_rows"], 1)
             self.assertEqual(second["valid_rows"], 1)
+            self.assertTrue(Path(first["raw_archive_path"]).exists())
+            self.assertEqual(Path(first["raw_archive_path"]).read_bytes(), payload)
             with sqlite3.connect(database) as connection:
                 count = connection.execute("SELECT COUNT(*) FROM daily_bhavcopy").fetchone()[0]
                 runs = connection.execute("SELECT COUNT(*) FROM ingestion_runs").fetchone()[0]
