@@ -145,6 +145,28 @@ class FivePaisaAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "token set does not match"):
             resolve_scrip_codes_via_market_feed("test-token", "key", "CLIENT1", ["HDFCBANK"])
 
+    @patch("providers.fivepaisa.fetch_scrip_master")
+    @patch("providers.fivepaisa.requests.post")
+    def test_market_feed_rejects_mixed_symbol_token_mismatch(self, mock_post, mock_master):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "head": {"status": "0"},
+            "body": {"Status": 0, "Data": [
+                {"Symbol": "HDFCBANK", "Token": 2885},
+                {"Token": 1333},
+            ]},
+        }
+        mock_post.return_value = response
+        mock_master.return_value = pd.DataFrame({
+            "symbol_key": ["HDFCBANK", "RELIANCE"],
+            "ScripCode": [1333, 2885],
+        })
+        with self.assertRaisesRegex(RuntimeError, "identity mismatch"):
+            resolve_scrip_codes_via_market_feed(
+                "test-token", "key", "CLIENT1", ["HDFCBANK", "RELIANCE"]
+            )
+
     @patch("providers.fivepaisa.requests.post")
     def test_market_feed_rejects_duplicate_tokens(self, mock_post):
         response = Mock()
