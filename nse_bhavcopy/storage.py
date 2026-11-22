@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from datetime import date
 from pathlib import Path
 
 from .parser import PARSER_VERSION, parse_bhavcopy_zip
@@ -80,12 +81,16 @@ def _preserve_raw_archive(payload: bytes, database_path: Path, trade_date: str,
 def ingest_bhavcopy(payload: bytes, database_path: str | Path, trade_date: str,
                     source_url: str, source_filename: str,
                     raw_archive_root: str | Path | None = None) -> dict:
-    """Validate, preserve the source ZIP, then atomically upsert records and audit the import."""
-    rows, quarantined = parse_bhavcopy_zip(payload, trade_date)
-    digest = hashlib.sha256(payload).hexdigest()
+    """Preserve the exact source ZIP, then validate and atomically upsert its rows."""
+    parsed_date = date.fromisoformat(trade_date)
+    if parsed_date.isoformat() != trade_date:
+        raise ValueError("trade_date must be YYYY-MM-DD")
     path = Path(database_path)
-    initialize_database(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(payload).hexdigest()
     raw_path = _preserve_raw_archive(payload, path, trade_date, raw_archive_root)
+    rows, quarantined = parse_bhavcopy_zip(payload, trade_date)
+    initialize_database(path)
     columns = (
         "trade_date", "symbol", "series", "business_date", "segment", "source",
         "instrument_type", "isin", "instrument_name", "open", "high", "low",
