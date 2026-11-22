@@ -288,13 +288,24 @@ def resolve_scrip_codes_via_market_feed(
             raise RuntimeError("5paisa MarketFeed did not resolve: " + ", ".join(missing))
         return {symbol: resolved[symbol] for symbol in cleaned}
 
-    # Token-only responses have no per-row identity. Verify the complete set
-    # against the official symbol-keyed master rather than trusting row order.
+    # Token-only or mixed-identity responses cannot be mapped by row position.
+    # Verify the complete token set against the official symbol-keyed master.
     master = fetch_scrip_master()
     expected = {symbol: resolve_scrip_code(master, symbol) for symbol in cleaned}
     expected_codes = list(expected.values())
     if len(set(expected_codes)) != len(expected_codes):
         raise RuntimeError("5paisa scrip master maps requested symbols to duplicate codes; refusing ambiguous mapping.")
+    requested_by_key = {_normalise_symbol(symbol): symbol for symbol in cleaned}
+    if len(requested_by_key) != len(cleaned):
+        raise RuntimeError("Requested symbols collide after normalization; refusing ambiguous mapping.")
+    for returned_symbol, code in parsed_rows:
+        if returned_symbol:
+            key = _normalise_symbol(returned_symbol)
+            requested_symbol = requested_by_key.get(key)
+            if requested_symbol is None or expected[requested_symbol] != code:
+                raise RuntimeError(
+                    f"5paisa MarketFeed symbol/token identity mismatch for {returned_symbol}."
+                )
     if set(returned_codes) != set(expected_codes):
         raise RuntimeError(
             "5paisa MarketFeed token set does not match the official NSE cash scrip master. "
