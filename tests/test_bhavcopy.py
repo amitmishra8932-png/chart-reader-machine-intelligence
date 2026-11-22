@@ -93,15 +93,33 @@ class BhavcopyStorageTests(unittest.TestCase):
             self.assertEqual(count, 1)
             self.assertEqual(runs, 2)
 
+    def test_distinct_same_date_archives_are_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "bhavcopy.sqlite3"
+            first_payload = fixture_zip()
+            changed = fixture_row()
+            changed["ClsPric"] = "106"
+            changed["LastPric"] = "106"
+            second_payload = fixture_zip(rows=[changed])
+            first = ingest_bhavcopy(first_payload, database, "2026-11-20", "manual-upload://test", "first.zip")
+            second = ingest_bhavcopy(second_payload, database, "2026-11-20", "manual-upload://test", "second.zip")
+            self.assertNotEqual(first["sha256"], second["sha256"])
+            self.assertNotEqual(first["raw_archive_path"], second["raw_archive_path"])
+            self.assertEqual(Path(first["raw_archive_path"]).read_bytes(), first_payload)
+            self.assertEqual(Path(second["raw_archive_path"]).read_bytes(), second_payload)
+            with sqlite3.connect(database) as connection:
+                count = connection.execute("SELECT COUNT(*) FROM daily_bhavcopy").fetchone()[0]
+            self.assertEqual(count, 1)
+
     def test_invalid_download_is_preserved_for_audit(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "bhavcopy.sqlite3"
             payload = b"not a zip"
             with self.assertRaises(BhavcopyFormatError):
                 ingest_bhavcopy(payload, database, "2026-11-20", "https://nse.test/file.zip", "file.zip")
-            raw_path = Path(directory) / "raw_bhavcopy" / "2026" / "11" / "20.zip"
-            self.assertTrue(raw_path.exists())
-            self.assertEqual(raw_path.read_bytes(), payload)
+            raw_files = list((Path(directory) / "raw_bhavcopy" / "2026" / "11" / "20").glob("*.zip"))
+            self.assertEqual(len(raw_files), 1)
+            self.assertEqual(raw_files[0].read_bytes(), payload)
 
 
 if __name__ == "__main__":
