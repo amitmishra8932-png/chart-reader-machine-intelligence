@@ -140,3 +140,26 @@ def ingest_bhavcopy(payload: bytes, database_path: str | Path, trade_date: str,
         "valid_rows": len(rows), "quarantined_rows": len(quarantined),
         "status": status, "database_path": str(path), "raw_archive_path": str(raw_path),
     }
+
+
+def get_bhavcopy_status(database_path: str | Path) -> dict:
+    """Return persisted row/run counts for the isolated store; does not mutate it."""
+    path = Path(database_path)
+    if not path.exists():
+        return {
+            "stored_rows": 0, "trading_dates": 0, "ingestion_runs": 0,
+            "quarantined_rows_total": 0, "latest_import_at": None,
+        }
+    with sqlite3.connect(path) as connection:
+        row = connection.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT trade_date) FROM daily_bhavcopy"
+        ).fetchone()
+        runs = connection.execute(
+            """SELECT COUNT(*), COALESCE(SUM(quarantined_rows),0), MAX(created_at)
+               FROM ingestion_runs"""
+        ).fetchone()
+    return {
+        "stored_rows": int(row[0]), "trading_dates": int(row[1]),
+        "ingestion_runs": int(runs[0]), "quarantined_rows_total": int(runs[1]),
+        "latest_import_at": runs[2],
+    }
