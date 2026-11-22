@@ -93,6 +93,16 @@ class BhavcopyStorageTests(unittest.TestCase):
             self.assertEqual(count, 1)
             self.assertEqual(runs, 2)
 
+    def test_invalid_download_is_preserved_for_audit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "bhavcopy.sqlite3"
+            payload = b"not a zip"
+            with self.assertRaises(BhavcopyFormatError):
+                ingest_bhavcopy(payload, database, "2026-11-20", "https://nse.test/file.zip", "file.zip")
+            raw_path = Path(directory) / "raw_bhavcopy" / "2026" / "11" / "20.zip"
+            self.assertTrue(raw_path.exists())
+            self.assertEqual(raw_path.read_bytes(), payload)
+
 
 if __name__ == "__main__":
     unittest.main()
