@@ -63,35 +63,124 @@ class FivePaisaAdapterTests(unittest.TestCase):
 
 
 
+    @patch("providers.fivepaisa.fetch_scrip_master")
     @patch("providers.fivepaisa.requests.post")
-    def test_market_feed_resolves_scrip_codes_from_scripdata(self, mock_post):
+    def test_market_feed_token_only_rows_are_verified_by_master_not_position(self, mock_post, mock_master):
         response = Mock()
         response.ok = True
         response.json.return_value = {
             "head": {"status": "0", "statusDescription": "Success"},
+            # Deliberately reversed relative to request order.
             "body": {"Status": 0, "Message": "Success", "Data": [
-                {"Exch": "N", "ExchType": "C", "Symbol": "HDFCBANK", "Token": 1333},
-                {"Exch": "N", "ExchType": "C", "Symbol": "RELIANCE", "Token": 2885},
+                {"Exch": "N", "ExchType": "C", "Token": 2885},
+                {"Exch": "N", "ExchType": "C", "Token": 1333},
             ]},
         }
         mock_post.return_value = response
+        mock_master.return_value = pd.DataFrame({
+            "symbol_key": ["HDFCBANK", "RELIANCE"],
+            "ScripCode": [1333, 2885],
+        })
         codes = resolve_scrip_codes_via_market_feed(
             "test-token", "test-api-key", "CLIENT1", ["HDFCBANK", "RELIANCE"]
         )
         self.assertEqual(codes, {"HDFCBANK": 1333, "RELIANCE": 2885})
+        mock_master.assert_called_once()
         args, kwargs = mock_post.call_args
         self.assertIn("/V1/MarketFeed", args[0])
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-token")
-        self.assertEqual(kwargs["headers"]["5Paisa-API-Uid"], "ka7SFqAU6SC")
-        self.assertEqual(kwargs["json"]["head"]["requestCode"], "5PMF")
-        self.assertEqual(kwargs["json"]["body"]["COUNT"], "CLIENT1")
-        self.assertEqual(kwargs["json"]["body"]["ClientLoginType"], 0)
+        self.assertEqual(kwargs["json"]["head"], {"key": "test-api-key"})
+        self.assertEqual(kwargs["json"]["body"]["ClientCode"], "CLIENT1")
         self.assertEqual(kwargs["json"]["body"]["RefreshRate"], "H")
+        self.assertEqual(kwargs["json"]["body"]["LastRequestTime"], "/Date(0)/")
+        self.assertNotIn("COUNT", kwargs["json"]["body"])
+        self.assertNotIn("ClientLoginType", kwargs["json"]["body"])
         request_data = kwargs["json"]["body"]["MarketFeedData"]
         self.assertEqual(request_data[0]["ScripData"], "HDFCBANK_EQ")
         self.assertEqual(request_data[0]["Exch"], "N")
         self.assertEqual(request_data[0]["ExchType"], "C")
-        self.assertEqual(kwargs["json"]["body"]["ClientCode"], "CLIENT1")
+
+    @patch("providers.fivepaisa.requests.post")
+    def test_market_feed_symbol_rows_are_matched_by_symbol_not_order(self, mock_post):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "head": {"status": "0"},
+            "body": {"Status": 0, "Data": [
+                {"Exch": "N", "ExchType": "C", "Symbol": "RELIANCE", "Token": 2885},
+                {"Exch": "N", "ExchType": "C", "Symbol": "HDFCBANK", "Token": 1333},
+            ]},
+        }
+        mock_post.return_value = response
+        codes = resolve_scrip_codes_via_market_feed(
+            "test-token", "key", "CLIENT1", ["HDFCBANK", "RELIANCE"]
+        )
+        self.assertEqual(codes, {"HDFCBANK": 1333, "RELIANCE": 2885})
+
+    @patch("providers.fivepaisa.requests.post")
+    def test_market_feed_rejects_unknown_symbol(self, mock_post):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "head": {"status": "0"},
+            "body": {"Status": 0, "Data": [
+                {"Symbol": "UNKNOWN", "Token": 1234},
+            ]},
+        }
+        mock_post.return_value = response
+        with self.assertRaisesRegex(RuntimeError, "unexpected symbol"):
+            resolve_scrip_codes_via_market_feed("test-token", "key", "CLIENT1", ["HDFCBANK"])
+
+    @patch("providers.fivepaisa.fetch_scrip_master")
+    @patch("providers.fivepaisa.requests.post")
+    def test_market_feed_rejects_token_set_not_matching_master(self, mock_post, mock_master):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "head": {"status": "0"},
+            "body": {"Status": 0, "Data": [{"Token": 9999}]},
+        }
+        mock_post.return_value = response
+        mock_master.return_value = pd.DataFrame({"symbol_key": ["HDFCBANK"], "ScripCode": [1333]})
+        with self.assertRaisesRegex(RuntimeError, "token set does not match"):
+            resolve_scrip_codes_via_market_feed("test-token", "key", "CLIENT1", ["HDFCBANK"])
+
+    @patch("providers.fivepaisa.fetch_scrip_master")
+    @patch("providers.fivepaisa.requests.post")
+    def test_market_feed_rejects_mixed_symbol_token_mismatch(self, mock_post, mock_master):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "head": {"status": "0"},
+            "body": {"Status": 0, "Data": [
+                {"Symbol": "HDFCBANK", "Token": 2885},
+                {"Token": 1333},
+            ]},
+        }
+        mock_post.return_value = response
+        mock_master.return_value = pd.DataFrame({
+            "symbol_key": ["HDFCBANK", "RELIANCE"],
+            "ScripCode": [1333, 2885],
+        })
+        with self.assertRaisesRegex(RuntimeError, "identity mismatch"):
+            resolve_scrip_codes_via_market_feed(
+                "test-token", "key", "CLIENT1", ["HDFCBANK", "RELIANCE"]
+            )
+
+    @patch("providers.fivepaisa.requests.post")
+    def test_market_feed_rejects_duplicate_tokens(self, mock_post):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "head": {"status": "0"},
+            "body": {"Status": 0, "Data": [
+                {"Symbol": "HDFCBANK", "Token": 1333},
+                {"Symbol": "RELIANCE", "Token": 1333},
+            ]},
+        }
+        mock_post.return_value = response
+        with self.assertRaisesRegex(RuntimeError, "duplicate ScripCodes"):
+            resolve_scrip_codes_via_market_feed("test-token", "key", "CLIENT1", ["HDFCBANK", "RELIANCE"])
 
     @patch("providers.fivepaisa.requests.post")
     def test_market_feed_rejects_missing_scrip_code(self, mock_post):
@@ -99,7 +188,16 @@ class FivePaisaAdapterTests(unittest.TestCase):
         response.ok = True
         response.json.return_value = {"head": {"status": "0"}, "body": {"Status": 0, "Data": []}}
         mock_post.return_value = response
-        with self.assertRaisesRegex(RuntimeError, "did not return a valid NSE cash ScripCode"):
+        with self.assertRaisesRegex(RuntimeError, "unexpected number of instruments"):
+            resolve_scrip_codes_via_market_feed("test-token", "key", "CLIENT1", ["HDFCBANK"])
+
+    @patch("providers.fivepaisa.requests.post")
+    def test_market_feed_rejects_missing_scrip_code(self, mock_post):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {"head": {"status": "0"}, "body": {"Status": 0, "Data": []}}
+        mock_post.return_value = response
+        with self.assertRaisesRegex(RuntimeError, "unexpected number of instruments|did not return a valid NSE cash ScripCode"):
             resolve_scrip_codes_via_market_feed("test-token", "key", "CLIENT1", ["HDFCBANK"])
 
 

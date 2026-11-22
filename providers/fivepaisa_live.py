@@ -7,6 +7,7 @@ normalized ticks and completed time-based OHLCV candles.
 from __future__ import annotations
 
 import json
+import math
 import threading
 from typing import Callable
 from urllib.parse import quote
@@ -74,7 +75,11 @@ def parse_live_tick_message(message: str | bytes, code_to_symbol: dict[int, str]
         try:
             code = int(token)
             price = float(_pick(row, "LastRate", "LTP"))
-            if price <= 0:
+            if not math.isfinite(price) or price <= 0:
+                continue
+            exchange = str(_pick(row, "Exch", default="N")).upper()
+            segment = str(_pick(row, "ExchType", default="C")).upper()
+            if exchange != "N" or segment != "C" or code not in code_to_symbol:
                 continue
             timestamp = _tick_timestamp(_pick(row, "TickDt", "TimeStamp", "Timestamp"))
         except (TypeError, ValueError, OverflowError):
@@ -203,6 +208,8 @@ class FivePaisaLiveFeed:
         self._access_token = access_token
         self._client_code = client_code
         self._instruments = normalized
+        if len(set(normalized.values())) != len(normalized):
+            raise ValueError("Each subscribed symbol must have a unique 5paisa ScripCode.")
         self._code_to_symbol = {code: symbol for symbol, code in normalized.items()}
         self._on_tick = on_tick
         self._on_error = on_error or (lambda message: None)
