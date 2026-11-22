@@ -67,28 +67,38 @@ def initialize_database(database_path: str | Path) -> None:
 
 
 def _preserve_raw_archive(payload: bytes, database_path: Path, trade_date: str,
-                          raw_archive_root: str | Path | None) -> Path:
+                          digest: str, raw_archive_root: str | Path | None) -> Path:
+    """Keep every distinct source byte stream; never overwrite a same-date archive."""
     root = Path(raw_archive_root) if raw_archive_root else database_path.parent / "raw_bhavcopy"
     year, month, day = trade_date.split("-")
-    destination = root / year / month / f"{day}.zip"
+    destination = root / year / month / day / f"{digest}.zip"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(".zip.tmp")
-    temporary.write_bytes(payload)
-    temporary.replace(destination)
+    if destination.exists():
+        if hashlib.sha256(destination.read_bytes()).hexdigest() != digest:
+            raise RuntimeError("raw archive path exists with unexpected content; refusing overwrite")
+        return destination
+    temporary = destination.with_name(f".{digest}.zip.tmp")
+    try:
+        with temporary.open("xb") as archive_file:
+            archive_file.write(payload)
+        temporary.replace(destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
     return destination
 
 
 def ingest_bhavcopy(payload: bytes, database_path: str | Path, trade_date: str,
                     source_url: str, source_filename: str,
                     raw_archive_root: str | Path | None = None) -> dict:
-    """Preserve the exact source ZIP, then validate and atomically upsert its rows."""
+    """Preserve exact source bytes, validate, then atomically upsert normalized rows."""
     parsed_date = date.fromisoformat(trade_date)
     if parsed_date.isoformat() != trade_date:
         raise ValueError("trade_date must be YYYY-MM-DD")
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(payload).hexdigest()
-    raw_path = _preserve_raw_archive(payload, path, trade_date, raw_archive_root)
+    raw_path = _preserve_raw_archive(payload, path, trade_date, digest, raw_archive_root)
     rows, quarantined = parse_bhavcopy_zip(payload, trade_date)
     initialize_database(path)
     columns = (
