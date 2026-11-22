@@ -179,6 +179,13 @@ def parse_scrip_master(csv_text: str) -> pd.DataFrame:
             "5paisa scrip master contains conflicting NSE cash codes for: "
             + ", ".join(conflicting[:10])
         )
+    conflicts = frame.groupby("symbol_key")["ScripCode"].nunique()
+    conflicting = conflicts[conflicts > 1].index.tolist()
+    if conflicting:
+        raise RuntimeError(
+            "5paisa scrip master contains conflicting NSE cash codes for: "
+            + ", ".join(conflicting[:10])
+        )
     return frame.drop_duplicates("symbol_key")
 
 
@@ -188,9 +195,9 @@ def resolve_scrip_codes_via_market_feed(
 ) -> dict[str, int]:
     """Resolve NSE cash ScripCodes without assuming response-array ordering.
 
-    Prefer the response's Symbol field when the provider supplies it. If Symbol
-    is absent from any row, verify the complete returned Token set against the
-    official NSE-cash scrip master. Never pair anonymous response rows by index.
+    Prefer the response's Symbol field when supplied. If Symbol is absent from
+    any row, verify the returned Token set against the official scrip master.
+    Never pair anonymous response rows with requested symbols by array index.
     """
     cleaned = list(dict.fromkeys(str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()))
     if not cleaned:
@@ -211,8 +218,7 @@ def resolve_scrip_codes_via_market_feed(
     }
     try:
         response = requests.post(
-            MARKET_FEED_URL,
-            json=payload,
+            MARKET_FEED_URL, json=payload,
             headers={
                 "Authorization": "Bearer " + access_token,
                 "Content-Type": "application/json",
@@ -282,8 +288,8 @@ def resolve_scrip_codes_via_market_feed(
             raise RuntimeError("5paisa MarketFeed did not resolve: " + ", ".join(missing))
         return {symbol: resolved[symbol] for symbol in cleaned}
 
-    # Some responses may omit Symbol. In that case, verify the token set against
-    # the official symbol-keyed master; array position is not an identity field.
+    # Token-only responses have no per-row identity. Verify the complete set
+    # against the official symbol-keyed master rather than trusting row order.
     master = fetch_scrip_master()
     expected = {symbol: resolve_scrip_code(master, symbol) for symbol in cleaned}
     expected_codes = list(expected.values())
