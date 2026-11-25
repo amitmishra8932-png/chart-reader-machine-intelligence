@@ -51,6 +51,36 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertEqual(len(ranked), 1)
         self.assertEqual(ranked[0]["decision"], "SHORT")
 
+    def test_confirmed_bullish_confluence_produces_long_with_consistent_score_cap(self):
+        from unittest.mock import patch
+
+        five = make_bars(30, "5min")
+        fifteen = make_bars(30, "15min")
+
+        def controlled_enrich(frame):
+            out = frame.copy()
+            n = len(out)
+            out["atr_14"] = 1.0
+            out["ema_20"] = np.linspace(100.0, 109.0, n)
+            out["rsi_14"] = 60.0
+            out["feature_relative_volume_20"] = 1.5
+            out["vwap"] = 100.0
+            out["structure_event"] = ""
+            out.loc[out.index[-1], "structure_event"] = "BOS_bullish"
+            out.loc[out.index[-21:-1], "high"] = 109.0
+            out.loc[out.index[-6:], "low"] = 109.0
+            out.loc[out.index[-1], ["open", "high", "low", "close"]] = [109.5, 111.0, 109.0, 110.0]
+            out.loc[out.index[-1], "close"] = 110.0
+            return out
+
+        with patch("engine.ai_decision._enrich", side_effect=controlled_enrich):
+            result = analyse_trade_setup(five, fifteen, symbol="BULL")
+
+        self.assertEqual(result["decision"], "LONG")
+        self.assertEqual(result["score"], 10)
+        self.assertEqual(result["max_score_without_ml"], 10)
+        self.assertGreaterEqual(result["reward_risk"], 1.8)
+
     def test_ml_training_fails_closed_on_insufficient_history(self):
         frame = make_bars(90).assign(symbol="AAA", timeframe="5m")
         model, report = train_direction_model(frame)
