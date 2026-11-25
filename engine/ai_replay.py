@@ -173,15 +173,14 @@ def replay_ai_decisions(
             i += 1
             continue
         fifteen_history = eligible_15.drop(columns=["__session"])
-        try:
-            decision = analyse_trade_setup(
-                five_history, fifteen_history, symbol=symbol,
-                min_score=min_score, min_reward_risk=min_reward_risk,
-            )
-        except (ValueError, KeyError, TypeError):
-            skipped["no_setup"] += 1
-            i += 1
-            continue
+        # The decision engine returns an explicit NO TRADE for expected
+        # market/data readiness conditions. Unexpected exceptions are defects
+        # or corrupt inputs and must fail the replay visibly, not masquerade as
+        # ordinary no-trade outcomes.
+        decision = analyse_trade_setup(
+            five_history, fifteen_history, symbol=symbol,
+            min_score=min_score, min_reward_risk=min_reward_risk,
+        )
         if decision.get("decision") not in {"LONG", "SHORT"}:
             skipped["no_setup"] += 1
             i += 1
@@ -200,6 +199,27 @@ def replay_ai_decisions(
         # Do not simulate a fill if the next open has already invalidated the setup.
         if (side == "LONG" and (entry <= stop or entry >= target)) or (
             side == "SHORT" and (entry >= stop or entry <= target)
+        ):
+            skipped["invalid_next_open"] += 1
+            i += 1
+            continue
+
+        # The decision engine's quoted R:R is measured from signal close.
+        # Recheck it after the actual next-bar fill (including entry slippage),
+        # while keeping the original stop and target fixed. Never improve a
+        # setup by silently moving its risk levels after seeing the fill.
+        if side == "LONG":
+            actual_risk = entry - stop
+            actual_reward = target - entry
+        else:
+            actual_risk = stop - entry
+            actual_reward = entry - target
+        actual_reward_risk = actual_reward / actual_risk if actual_risk > 0 else float("nan")
+        if (
+            not np.isfinite(actual_reward_risk)
+            or actual_risk <= 0
+            or actual_reward <= 0
+            or actual_reward_risk < min_reward_risk
         ):
             skipped["invalid_next_open"] += 1
             i += 1
@@ -248,6 +268,7 @@ def replay_ai_decisions(
             "exit_time": five.iloc[exit_index]["timestamp"].isoformat(),
             "signal_close": float(signal_bar["close"]),
             "entry_price": entry, "stop_loss": stop, "target": target,
+            "actual_reward_risk": float(actual_reward_risk),
             "exit_price": exit_price, "exit_reason": exit_reason,
             "score": int(decision["score"]), "gross_return_pct": gross_pct,
             "cost_pct": cost_pct, "net_return_pct": net_pct,
@@ -285,6 +306,7 @@ def replay_ai_decisions(
         "skipped": skipped,
         "limitations": [
             "Uses next-bar open fills with fixed adverse slippage and round-trip transaction-cost assumptions.",
+            "Rechecks minimum reward/risk from the actual slipped entry; signal stop and target remain fixed.",
             "If stop and target both touch in one candle, stop is assumed first.",
             "No market impact, queue position, taxes by turnover, circuit limits, or partial fills are modelled.",
             "Single-symbol, one-position-at-a-time replay; results need walk-forward out-of-sample validation.",
