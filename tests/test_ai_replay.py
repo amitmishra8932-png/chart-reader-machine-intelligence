@@ -98,7 +98,7 @@ class AIReplayTests(unittest.TestCase):
         decision = {
             "decision": "LONG", "score": 9, "stop_loss": 98.0, "target": 104.0,
         }
-        with patch("engine.ai_replay.analyse_trade_setup", return_value=decision):
+        with patch("engine.ai_replay.analyse_trade_setup", side_effect=[decision, {"decision": "NO TRADE"}]):
             report = replay_ai_decisions(five, fifteen, symbol="TEST", slippage_bps=5)
         self.assertEqual(report["trade_count"], 0)
         self.assertGreater(report["skipped"]["invalid_next_open"], 0)
@@ -110,7 +110,7 @@ class AIReplayTests(unittest.TestCase):
         decision = {
             "decision": "SHORT", "score": 9, "stop_loss": 102.0, "target": 96.0,
         }
-        with patch("engine.ai_replay.analyse_trade_setup", return_value=decision):
+        with patch("engine.ai_replay.analyse_trade_setup", side_effect=[decision, {"decision": "NO TRADE"}]):
             report = replay_ai_decisions(five, fifteen, symbol="TEST", slippage_bps=5)
         self.assertEqual(report["trade_count"], 0)
         self.assertGreater(report["skipped"]["invalid_next_open"], 0)
