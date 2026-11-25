@@ -164,6 +164,11 @@ def replay_ai_decisions(
         eligible_15 = fifteen[
             fifteen["timestamp"] + pd.Timedelta(minutes=15) <= five_end
         ]
+        # Do not even invoke the decision engine with yesterday's latest
+        # 15m context. Wait until today's first completed 15m candle exists.
+        if eligible_15.empty or eligible_15.iloc[-1]["__session"] != session:
+            i += 1
+            continue
         if len(eligible_15) < 21:
             i += 1
             continue
