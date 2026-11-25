@@ -40,6 +40,26 @@ class AIReplayTests(unittest.TestCase):
         self.assertLess(first["exit_price"], 100.0)
         self.assertEqual(first["bars_held"], 1)
 
+    def test_gap_through_long_stop_fills_at_worse_open(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 26)
+        five.loc[64, ["open", "high", "low", "close"]] = [95.0, 97.0, 94.0, 96.0]
+        decision = {
+            "decision": "LONG", "score": 9, "stop_loss": 98.0, "target": 104.0,
+        }
+        with patch("engine.ai_replay.analyse_trade_setup", return_value=decision):
+            report = replay_ai_decisions(five, fifteen, symbol="TEST", slippage_bps=5)
+        first = report["trades"][0]
+        self.assertEqual(first["exit_reason"], "STOP")
+        self.assertLess(first["exit_price"], 95.0)
+
+    def test_rejects_invalid_ohlc_geometry(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 26)
+        five.loc[0, "high"] = 98.0
+        with self.assertRaisesRegex(ValueError, "OHLC candle geometry"):
+            replay_ai_decisions(five, fifteen, symbol="TEST")
+
     def test_rejects_timezone_naive_replay_data(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 26)
