@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from engine.data_loader import read_uploaded_csv
+from engine.ai_decision import analyse_trade_setup, rank_trade_setups, train_direction_model
 from engine.indicators import add_indicators
 from engine.features import add_features
 from engine.ml_dataset import build_ml_dataset
@@ -87,8 +88,8 @@ with st.sidebar:
         st.warning("Configure FIVEPAISA_API_KEY, FIVEPAISA_ENCRYPTION_KEY, FIVEPAISA_USER_ID and FIVEPAISA_REDIRECT_URL in Streamlit Secrets.")
 
 st.subheader("Workspace")
-overview, chart_tab, intelligence, structure_tab, historical_tab, live_tab, paper_tab, library_tab, research = st.tabs(
-    ["Overview", "Chart analysis", "Intelligence", "Market structure", "Historical Data Centre", "Live Market", "Paper trading", "Pattern library", "Research & validation"]
+overview, chart_tab, intelligence, ai_tab, structure_tab, historical_tab, live_tab, paper_tab, library_tab, research = st.tabs(
+    ["Overview", "Chart analysis", "Intelligence", "AI Trade Desk", "Market structure", "Historical Data Centre", "Live Market", "Paper trading", "Pattern library", "Research & validation"]
 )
 
 if "paper_trades" not in st.session_state:
@@ -221,6 +222,121 @@ with intelligence:
             "cross-timeframe feature alignment is intentionally not enabled yet."
         )
 
+
+
+with ai_tab:
+    st.markdown("### Autonomous AI Trade Decision Desk")
+    st.caption("Completed-candle analysis · 5m entry + 15m context · read-only · no order placement")
+    st.info(
+        "The decision engine independently chooses LONG, SHORT or NO TRADE. "
+        "Rule-based confluence is always visible; the ML overlay is used only when its chronological holdout gate passes."
+    )
+
+    st.markdown("#### Train the optional machine-learning overlay")
+    training_file = st.file_uploader(
+        "Upload a multi-symbol, multi-timeframe historical OHLCV CSV",
+        type=["csv"], key="ai_training_csv",
+        help="Required columns: timestamp, symbol, timeframe, open, high, low, close, volume. Include 5m and 15m history where available."
+    )
+    stored_history = st.session_state.get("historical_data", pd.DataFrame())
+    has_stored_history = isinstance(stored_history, pd.DataFrame) and not stored_history.empty
+    if has_stored_history:
+        st.caption(f"Historical Data Centre data is available in this session: {len(stored_history):,} rows.")
+    if st.button(
+        "Train and validate ML model", key="ai_train_button", type="primary",
+        disabled=training_file is None and not has_stored_history,
+    ):
+        try:
+            training_frame = pd.read_csv(training_file) if training_file is not None else stored_history.copy()
+            with st.spinner("Building causal features and testing a chronological holdout..."):
+                model, report = train_direction_model(training_frame)
+            st.session_state["ai_ml_model"] = model
+            st.session_state["ai_ml_report"] = report
+            st.session_state["ai_ml_features"] = report.get("features", [])
+            if model is not None:
+                st.success("ML overlay passed its holdout gate and is enabled for this session.")
+            else:
+                st.warning("ML overlay was not approved. The engine will continue in rule-based mode.")
+        except Exception as exc:
+            st.error(f"ML training could not complete: {exc}")
+
+    ml_report = st.session_state.get("ai_ml_report")
+    if ml_report:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("ML overlay", "APPROVED" if ml_report.get("approved") else "DISABLED")
+        c2.metric("Balanced accuracy", f"{ml_report['balanced_accuracy']:.1%}" if ml_report.get("balanced_accuracy") is not None else "—")
+        c3.metric("Validation rows", ml_report.get("validation_rows", "—"))
+        st.caption(ml_report.get("reason", ""))
+        if ml_report.get("first_validation_date"):
+            st.caption(
+                f"Chronological holdout: {ml_report['first_validation_date']} to "
+                f"{ml_report['last_validation_date']} · majority baseline "
+                f"{ml_report['majority_baseline']:.1%}"
+            )
+    else:
+        st.caption("No ML model has been trained in this session. The rule-based decision engine remains available; no ML probability will be displayed.")
+
+    st.divider()
+    st.markdown("#### Scan completed live candles")
+    live_bars = st.session_state.get("fivepaisa_live_bars", {})
+    five_bars = live_bars.get("5m", [])
+    fifteen_bars = live_bars.get("15m", [])
+    if not five_bars or not fifteen_bars:
+        st.warning("Start the 5paisa read-only feed and collect at least 21 completed candles per timeframe for each stock. The scanner will abstain until enough history is available.")
+    else:
+        if st.button("Analyse NIFTY 50 watchlist", key="ai_scan_live", type="primary"):
+            five_frame = pd.DataFrame(five_bars)
+            fifteen_frame = pd.DataFrame(fifteen_bars)
+            scan_results = []
+            symbols = sorted(set(five_frame.get("symbol", [])) & set(fifteen_frame.get("symbol", [])))
+            model = st.session_state.get("ai_ml_model")
+            report = st.session_state.get("ai_ml_report") or {}
+            feature_columns = st.session_state.get("ai_ml_features", [])
+            for ticker in symbols:
+                five_symbol = five_frame[five_frame["symbol"] == ticker].tail(300)
+                fifteen_symbol = fifteen_frame[fifteen_frame["symbol"] == ticker].tail(300)
+                try:
+                    scan_results.append(analyse_trade_setup(
+                        five_symbol, fifteen_symbol, symbol=ticker,
+                        ml_model=model, ml_feature_columns=feature_columns,
+                        ml_approved=bool(report.get("approved", False)),
+                    ))
+                except Exception as exc:
+                    scan_results.append({
+                        "symbol": ticker, "decision": "NO TRADE",
+                        "status": "DATA_ERROR", "reason": str(exc),
+                    })
+            st.session_state["ai_last_scan_results"] = scan_results
+            st.session_state["ai_last_scan_time"] = pd.Timestamp.now(tz="Asia/Kolkata").strftime("%Y-%m-%d %H:%M:%S IST")
+
+        results = st.session_state.get("ai_last_scan_results", [])
+        if results:
+            st.caption("Last scan: " + st.session_state.get("ai_last_scan_time", ""))
+            qualified = rank_trade_setups(results, limit=3)
+            if qualified:
+                st.success(f"{len(qualified)} qualified candidate(s) found. Review the evidence and confirm the next-bar entry.")
+                st.dataframe(pd.DataFrame([{
+                    "Stock": item["symbol"], "Decision": item["decision"],
+                    "Reference close": item["entry_reference"], "Stop-loss": item["stop_loss"],
+                    "Target": item["target"], "R:R": item["reward_risk"],
+                    "Confluence score": item["score"], "ML overlay": item["ml_used"],
+                } for item in qualified]), use_container_width=True, hide_index=True)
+                for item in qualified:
+                    with st.expander(f"{item['symbol']} · {item['decision']} · score {item['score']}"):
+                        st.write("**Evidence**")
+                        for reason in item["reasons"]:
+                            st.write("• " + reason)
+                        for warning in item["warnings"]:
+                            st.caption("⚠ " + warning)
+            else:
+                st.info("NO TRADE: no stock passed the quality filters on this scan.")
+            with st.expander("All stock decisions, including abstentions"):
+                st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+
+    st.caption(
+        "The engine is autonomous in selecting LONG/SHORT/NO TRADE from its programmed evidence and, when approved, an ML overlay. "
+        "It is not an autonomous broker or guaranteed-profit system. Live feed accuracy, candle boundaries, liquidity and next-bar confirmation remain required."
+    )
 
 with structure_tab:
     st.markdown("### Market Structure Intelligence")
