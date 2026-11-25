@@ -111,7 +111,7 @@ class AIReplayTests(unittest.TestCase):
     def test_rejects_ambiguous_completion_flags(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 25)
-        five["is_complete"] = True
+        five["is_complete"] = pd.Series([True] * len(five), dtype=object)
         five.loc[0, "is_complete"] = "unknown"
         with self.assertRaisesRegex(ValueError, "explicit true/false"):
             replay_ai_decisions(five, fifteen, symbol="TEST")
