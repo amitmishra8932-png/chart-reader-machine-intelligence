@@ -50,6 +50,26 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     return data
 
 
+
+def _validate_identity(frame: pd.DataFrame, timeframe: str, symbol: str) -> None:
+    """Reject metadata that does not match the replay request."""
+    expected_symbol = str(symbol).strip().upper()
+    if not expected_symbol:
+        raise ValueError("Replay symbol must be a non-empty string.")
+    if "symbol" in frame:
+        symbols = frame["symbol"].dropna().astype(str).str.strip().str.upper().unique()
+        if len(symbols) != 1 or symbols[0] != expected_symbol:
+            raise ValueError(
+                f"{timeframe} replay data must contain only the requested symbol {expected_symbol}."
+            )
+    if "timeframe" in frame:
+        values = frame["timeframe"].dropna().astype(str).str.strip().str.lower().unique()
+        if len(values) != 1 or values[0] != timeframe:
+            raise ValueError(
+                f"{timeframe} replay data contains mismatched timeframe metadata."
+            )
+
+
 def _fill_price(reference: float, side: str, action: str, slippage_bps: float) -> float:
     adverse = slippage_bps / 10_000.0
     if action == "entry":
@@ -80,10 +100,8 @@ def replay_ai_decisions(
     fifteen = _prepare(candles_15m, "15m")
     if five.empty or fifteen.empty:
         raise ValueError("Replay requires non-empty 5m and 15m candles.")
-    if "symbol" in five and five["symbol"].astype(str).str.upper().nunique() != 1:
-        raise ValueError("Replay accepts exactly one 5m symbol per call.")
-    if "symbol" in fifteen and fifteen["symbol"].astype(str).str.upper().nunique() != 1:
-        raise ValueError("Replay accepts exactly one 15m symbol per call.")
+    _validate_identity(five, "5m", symbol)
+    _validate_identity(fifteen, "15m", symbol)
 
     trades: list[dict[str, Any]] = []
     skipped = {"no_setup": 0, "no_next_bar": 0, "invalid_next_open": 0}
