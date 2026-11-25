@@ -238,9 +238,16 @@ with ai_tab:
         type=["csv"], key="ai_training_csv",
         help="Required columns: timestamp, symbol, timeframe, open, high, low, close, volume. Include 5m and 15m history where available."
     )
-    if st.button("Train and validate ML model", key="ai_train_button", type="primary", disabled=training_file is None):
+    stored_history = st.session_state.get("historical_data", pd.DataFrame())
+    has_stored_history = isinstance(stored_history, pd.DataFrame) and not stored_history.empty
+    if has_stored_history:
+        st.caption(f"Historical Data Centre data is available in this session: {len(stored_history):,} rows.")
+    if st.button(
+        "Train and validate ML model", key="ai_train_button", type="primary",
+        disabled=training_file is None and not has_stored_history,
+    ):
         try:
-            training_frame = pd.read_csv(training_file)
+            training_frame = pd.read_csv(training_file) if training_file is not None else stored_history.copy()
             with st.spinner("Building causal features and testing a chronological holdout..."):
                 model, report = train_direction_model(training_frame)
             st.session_state["ai_ml_model"] = model
