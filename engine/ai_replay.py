@@ -67,8 +67,6 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         raise ValueError(f"Replay contains {timeframe} bars outside regular NSE continuous trading hours.")
     data["__session"] = local.dt.strftime("%Y-%m-%d")
     expected_delta = pd.Timedelta(minutes=5 if timeframe == "5m" else 15)
-    expected_first = pd.Timedelta(hours=9, minutes=15)
-    expected_last = pd.Timedelta(hours=15, minutes=25 if timeframe == "5m" else 15)
     for session_date, session_frame in data.groupby("__session", sort=False):
         deltas = session_frame["timestamp"].diff().dropna()
         if not deltas.eq(expected_delta).all():
@@ -131,8 +129,10 @@ def replay_ai_decisions(
 ) -> dict[str, Any]:
     """Replay one symbol. Costs are round-trip bps of entry notional.
 
-    Trades are closed by stop, target, or the final available bar of the same
-    NSE session. If stop and target are both touched in one bar, stop wins.
+    Indicators may warm up on prior complete sessions, while each decision
+    must use a current-session 15m bar that has fully closed by the 5m signal
+    time. Trades are closed by stop, target, or the final available bar of the
+    same NSE session. If both barriers touch in one bar, stop wins.
     """
     for name, value in (("transaction_cost_bps", transaction_cost_bps),
                         ("slippage_bps", slippage_bps)):
@@ -156,9 +156,13 @@ def replay_ai_decisions(
             continue
         five_history = five.iloc[:i + 1].drop(columns=["__session"])
         five_end = signal_bar["timestamp"] + pd.Timedelta(minutes=5)
+        # Keep completed higher-timeframe history across prior sessions for
+        # indicator warm-up. The decision engine still requires its latest 15m
+        # bar to end in the same session as the 5m signal, so stale prior-day
+        # context cannot trigger a trade at today's open. VWAP is session-reset
+        # by add_indicators; EMA/ATR/structure can use the longer causal history.
         eligible_15 = fifteen[
-            (fifteen["__session"] == session)
-            & (fifteen["timestamp"] + pd.Timedelta(minutes=15) <= five_end)
+            fifteen["timestamp"] + pd.Timedelta(minutes=15) <= five_end
         ]
         if len(eligible_15) < 21:
             i += 1
