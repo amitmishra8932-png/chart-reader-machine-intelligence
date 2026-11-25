@@ -66,6 +66,14 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     if not in_regular_session.all():
         raise ValueError(f"Replay contains {timeframe} bars outside regular NSE continuous trading hours.")
     data["__session"] = local.dt.strftime("%Y-%m-%d")
+    expected_delta = pd.Timedelta(minutes=5 if timeframe == "5m" else 15)
+    for _, session_frame in data.groupby("__session", sort=False):
+        deltas = session_frame["timestamp"].diff().dropna()
+        if not deltas.eq(expected_delta).all():
+            raise ValueError(
+                f"Replay contains missing or irregular {timeframe} candles within a session; "
+                "audit and repair the source dataset before replay."
+            )
     return data
 
 
