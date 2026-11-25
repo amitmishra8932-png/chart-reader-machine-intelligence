@@ -285,9 +285,12 @@ def train_direction_model(
     data = data[data["timeframe"].astype(str).str.lower() == "5m"].copy()
     if data.empty:
         return None, {"approved": False, "reason": "Training requires 5m entry candles.", "rows": 0}
-    data["timestamp"] = pd.to_datetime(data["timestamp"], errors="coerce", utc=True)
-    if data["timestamp"].isna().any():
+    parsed_timestamps = pd.to_datetime(data["timestamp"], errors="coerce")
+    if parsed_timestamps.isna().any():
         raise ValueError("ML training timestamps must be valid.")
+    if parsed_timestamps.dt.tz is None:
+        raise ValueError("ML training timestamps must include an explicit timezone; naive timestamps are rejected.")
+    data["timestamp"] = parsed_timestamps.dt.tz_convert("UTC")
     data = data.sort_values(["symbol", "timeframe", "timestamp"], kind="mergesort").reset_index(drop=True)
     # Indicators and VWAP must be computed independently per symbol/timeframe.
     enriched = [
