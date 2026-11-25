@@ -201,7 +201,7 @@ def analyse_trade_setup(
         "risk_per_share": round(risk, 2),
         "reward_risk": round(reward_risk, 2),
         "score": int(score),
-        "max_score_without_ml": 9,
+        "max_score_without_ml": 10,
         "ml_long_probability": ml_long,
         "ml_short_probability": ml_short,
         "ml_used": ml_long is not None and ml_short is not None,
