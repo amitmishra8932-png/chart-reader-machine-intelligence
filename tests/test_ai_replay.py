@@ -23,8 +23,9 @@ class AIReplayTests(unittest.TestCase):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 26)
         # The first eligible entry occurs after 21 completed 15m bars.
-        entry_row = 64
-        five.loc[entry_row, ["open", "high", "low", "close"]] = [100, 105, 97, 100]
+        # The first signal waits for 21 completed 15m context bars.
+        five.loc[64:, "high"] = 105.0
+        five.loc[64:, "low"] = 97.0
         decision = {
             "decision": "LONG", "score": 9, "stop_loss": 98.0, "target": 104.0,
         }
