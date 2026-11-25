@@ -67,12 +67,27 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         raise ValueError(f"Replay contains {timeframe} bars outside regular NSE continuous trading hours.")
     data["__session"] = local.dt.strftime("%Y-%m-%d")
     expected_delta = pd.Timedelta(minutes=5 if timeframe == "5m" else 15)
-    for _, session_frame in data.groupby("__session", sort=False):
+    expected_first = pd.Timedelta(hours=9, minutes=15)
+    expected_last = pd.Timedelta(hours=15, minutes=25 if timeframe == "5m" else 15)
+    for session_date, session_frame in data.groupby("__session", sort=False):
         deltas = session_frame["timestamp"].diff().dropna()
         if not deltas.eq(expected_delta).all():
             raise ValueError(
                 f"Replay contains missing or irregular {timeframe} candles within a session; "
                 "audit and repair the source dataset before replay."
+            )
+        first_local = session_frame["timestamp"].iloc[0].tz_convert("Asia/Kolkata")
+        last_local = session_frame["timestamp"].iloc[-1].tz_convert("Asia/Kolkata")
+        if (first_local.hour * 60 + first_local.minute) != 9 * 60 + 15:
+            raise ValueError(
+                f"Replay session {session_date} is missing its opening {timeframe} candle; "
+                "full regular-session data is required."
+            )
+        expected_end_minute = 15 * 60 + (25 if timeframe == "5m" else 15)
+        if (last_local.hour * 60 + last_local.minute) != expected_end_minute:
+            raise ValueError(
+                f"Replay session {session_date} is incomplete at the close for {timeframe}; "
+                "full regular-session data is required to avoid false session-end exits."
             )
     return data
 
