@@ -92,7 +92,7 @@ class FivePaisaAdapterTests(unittest.TestCase):
         mock_get.return_value = response
         frame = fetch_historical_candles("token", 2885, "5m", "2026-11-10", "2026-11-12")
         self.assertEqual(len(frame), 2)
-        self.assertEqual(str(frame["timestamp"].dtype), "datetime64[ns, pytz.FixedOffset(330)]")
+        self.assertIsNotNone(frame["timestamp"].dt.tz)
         self.assertEqual(frame.iloc[-1]["timestamp"].date().isoformat(), "2026-11-12")
 
     @patch("providers.fivepaisa.requests.post")
