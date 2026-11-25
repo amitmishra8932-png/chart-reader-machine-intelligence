@@ -65,6 +65,35 @@ def _enrich(frame: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _validate_timeframe_alignment(five: pd.DataFrame, fifteen: pd.DataFrame) -> str | None:
+    """Reject stale, future-dated, cross-session or misaligned completed bars.
+
+    LiveCandleBuilder stores each candle's interval start in Asia/Kolkata.
+    Compare interval end times, not start times: a 5m bar can legitimately end
+    up to 15 minutes after the latest completed 15m context bar.
+    """
+    five_start = pd.Timestamp(five["timestamp"].iloc[-1])
+    fifteen_start = pd.Timestamp(fifteen["timestamp"].iloc[-1])
+    if five_start.tzinfo is None or fifteen_start.tzinfo is None:
+        return "Timezone-naive timestamps are not accepted for live decision alignment."
+    five_local = five_start.tz_convert("Asia/Kolkata")
+    fifteen_local = fifteen_start.tz_convert("Asia/Kolkata")
+    if five_local.date() != fifteen_local.date():
+        return "5m entry and 15m context candles belong to different trading sessions."
+    if five_local.minute % 5 != 0 or five_local.second or five_local.microsecond:
+        return "Latest 5m candle is not aligned to a 5-minute interval boundary."
+    if fifteen_local.minute % 15 != 0 or fifteen_local.second or fifteen_local.microsecond:
+        return "Latest 15m context candle is not aligned to a 15-minute interval boundary."
+    five_end = five_start + pd.Timedelta(minutes=5)
+    fifteen_end = fifteen_start + pd.Timedelta(minutes=15)
+    lag = five_end - fifteen_end
+    if lag < pd.Timedelta(0):
+        return "15m context candle ends after the latest 5m entry candle; future context is rejected."
+    if lag > pd.Timedelta(minutes=15):
+        return "15m context is stale relative to the latest 5m entry candle."
+    return None
+
+
 def analyse_trade_setup(
     candles_5m: pd.DataFrame,
     candles_15m: pd.DataFrame,
@@ -81,6 +110,10 @@ def analyse_trade_setup(
     fifteen = _enrich(_normalise_candles(candles_15m, "15m"))
     if len(five) < 21 or len(fifteen) < 21:
         return _no_trade(symbol, "Insufficient history: at least 21 completed bars per timeframe are required.")
+
+    alignment_error = _validate_timeframe_alignment(five, fifteen)
+    if alignment_error:
+        return _no_trade(symbol, alignment_error)
 
     a, b = five.iloc[-1], fifteen.iloc[-1]
     if not np.isfinite([a["atr_14"], b["ema_20"], b["ema_20"] - fifteen["ema_20"].iloc[-4], a["ema_20"], a["ema_20"] - five["ema_20"].iloc[-4]]).all() or a["atr_14"] <= 0:
