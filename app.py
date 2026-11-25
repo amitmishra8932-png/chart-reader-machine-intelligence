@@ -282,7 +282,7 @@ with ai_tab:
     five_bars = live_bars.get("5m", [])
     fifteen_bars = live_bars.get("15m", [])
     if not five_bars or not fifteen_bars:
-        st.warning("Start the 5paisa read-only feed and collect at least 55 completed candles per timeframe for each stock. The scanner will abstain until enough history is available.")
+        st.warning("Start the 5paisa read-only feed and collect at least 21 completed candles per timeframe for each stock. The scanner will abstain until enough history is available.")
     else:
         if st.button("Analyse NIFTY 50 watchlist", key="ai_scan_live", type="primary"):
             five_frame = pd.DataFrame(five_bars)
