@@ -281,6 +281,20 @@ with ai_tab:
     live_bars = st.session_state.get("fivepaisa_live_bars", {})
     five_bars = live_bars.get("5m", [])
     fifteen_bars = live_bars.get("15m", [])
+    if five_bars or fifteen_bars:
+        five_counts = pd.DataFrame(five_bars).groupby("symbol").size() if five_bars else pd.Series(dtype=int)
+        fifteen_counts = pd.DataFrame(fifteen_bars).groupby("symbol").size() if fifteen_bars else pd.Series(dtype=int)
+        readiness_symbols = sorted(set(five_counts.index) | set(fifteen_counts.index))
+        readiness = pd.DataFrame([{
+            "Stock": ticker,
+            "Completed 5m bars": int(five_counts.get(ticker, 0)),
+            "Completed 15m bars": int(fifteen_counts.get(ticker, 0)),
+            "Ready": int(five_counts.get(ticker, 0)) >= 21 and int(fifteen_counts.get(ticker, 0)) >= 21,
+        } for ticker in readiness_symbols])
+        st.markdown("##### Per-stock candle readiness")
+        st.dataframe(readiness, use_container_width=True, hide_index=True)
+        ready_count = int(readiness["Ready"].sum()) if not readiness.empty else 0
+        st.caption(f"{ready_count} of {len(readiness)} subscribed stocks currently have the minimum 21 completed bars on both timeframes.")
     if not five_bars or not fifteen_bars:
         st.warning("Start the 5paisa read-only feed and collect at least 21 completed candles per timeframe for each stock. The scanner will abstain until enough history is available.")
     else:
