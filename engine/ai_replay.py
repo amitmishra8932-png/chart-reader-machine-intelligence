@@ -20,6 +20,18 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     if missing:
         raise ValueError(f"{timeframe} replay data missing columns: {sorted(missing)}")
     data = frame.copy()
+    # Never replay a still-forming candle. If the source exposes completion
+    # metadata, accept only explicit boolean true values and fail on ambiguity.
+    if "is_complete" in data.columns:
+        complete = data["is_complete"]
+        if complete.dtype != bool:
+            normalized = complete.astype(str).str.strip().str.lower()
+            if not normalized.isin({"true", "false"}).all():
+                raise ValueError("Replay is_complete values must be explicit true/false flags.")
+            complete = normalized.eq("true")
+        data = data.loc[complete].copy()
+    if data.empty:
+        raise ValueError(f"No completed {timeframe} candles remain after excluding incomplete bars.")
     parsed = pd.to_datetime(data["timestamp"], errors="coerce")
     if parsed.isna().any() or parsed.dt.tz is None:
         raise ValueError("Replay timestamps must be valid and timezone-aware.")
@@ -46,6 +58,13 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         valid = (local.dt.minute % 15 == 0) & (local.dt.second == 0)
     if not valid.all():
         raise ValueError(f"Replay contains timestamps not aligned to {timeframe} boundaries.")
+    # Replay only continuous NSE cash-market candles; auction, transition,
+    # pre-open and post-close bars are not valid intraday signal inputs.
+    minute_of_day = local.dt.hour * 60 + local.dt.minute
+    last_start = 15 * 60 + (25 if timeframe == "5m" else 15)
+    in_regular_session = (minute_of_day >= 9 * 60 + 15) & (minute_of_day <= last_start)
+    if not in_regular_session.all():
+        raise ValueError(f"Replay contains {timeframe} bars outside regular NSE continuous trading hours.")
     data["__session"] = local.dt.strftime("%Y-%m-%d")
     return data
 
