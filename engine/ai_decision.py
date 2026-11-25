@@ -199,7 +199,7 @@ def analyse_trade_setup(
         "risk_per_share": round(risk, 2),
         "reward_risk": round(reward_risk, 2),
         "score": int(score),
-        "max_score_without_ml": 8,
+        "max_score_without_ml": 9,
         "ml_long_probability": ml_long,
         "ml_short_probability": ml_short,
         "ml_used": ml_long is not None and ml_short is not None,
@@ -240,6 +240,11 @@ def train_direction_model(
     if required.difference(candles.columns):
         raise ValueError(f"ML training requires columns: {sorted(required)}")
     data = candles.copy()
+    # Train only on the 5m entry horizon; mixing 5m and 15m labels would
+    # make a three-bar target represent two different holding periods.
+    data = data[data["timeframe"].astype(str).str.lower() == "5m"].copy()
+    if data.empty:
+        return None, {"approved": False, "reason": "Training requires 5m entry candles.", "rows": 0}
     data["timestamp"] = pd.to_datetime(data["timestamp"], errors="coerce", utc=True)
     if data["timestamp"].isna().any():
         raise ValueError("ML training timestamps must be valid.")
