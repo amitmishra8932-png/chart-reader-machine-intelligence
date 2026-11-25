@@ -67,6 +67,19 @@ class AIReplayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "timezone-aware"):
             replay_ai_decisions(five, fifteen, symbol="TEST")
 
+
+    def test_rejects_mismatched_symbol_metadata(self):
+        five = session_bars("5min", 75).assign(symbol="OTHER")
+        fifteen = session_bars("15min", 26).assign(symbol="TEST")
+        with self.assertRaisesRegex(ValueError, "requested symbol TEST"):
+            replay_ai_decisions(five, fifteen, symbol="TEST")
+
+    def test_rejects_mismatched_timeframe_metadata(self):
+        five = session_bars("5min", 75).assign(timeframe="15m")
+        fifteen = session_bars("15min", 26).assign(timeframe="15m")
+        with self.assertRaisesRegex(ValueError, "mismatched timeframe"):
+            replay_ai_decisions(five, fifteen, symbol="TEST")
+
     def test_rejects_invalid_cost_assumptions(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 26)
