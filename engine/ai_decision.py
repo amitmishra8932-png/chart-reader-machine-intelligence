@@ -79,11 +79,11 @@ def analyse_trade_setup(
     """Make one end-of-bar decision using completed 5m and 15m candles."""
     five = _enrich(_normalise_candles(candles_5m, "5m"))
     fifteen = _enrich(_normalise_candles(candles_15m, "15m"))
-    if len(five) < 55 or len(fifteen) < 55:
-        return _no_trade(symbol, "Insufficient history: at least 55 completed bars per timeframe are required.")
+    if len(five) < 21 or len(fifteen) < 21:
+        return _no_trade(symbol, "Insufficient history: at least 21 completed bars per timeframe are required.")
 
     a, b = five.iloc[-1], fifteen.iloc[-1]
-    if not np.isfinite([a["atr_14"], b["ema_20"], b["ema_50"], a["ema_20"], a["ema_50"]]).all() or a["atr_14"] <= 0:
+    if not np.isfinite([a["atr_14"], b["ema_20"], b["ema_20"] - fifteen["ema_20"].iloc[-4], a["ema_20"], a["ema_20"] - five["ema_20"].iloc[-4]]).all() or a["atr_14"] <= 0:
         return _no_trade(symbol, "Indicators are not ready or ATR is invalid.")
 
     long_score = 0
@@ -93,17 +93,19 @@ def analyse_trade_setup(
     close = float(a["close"])
     atr = float(a["atr_14"])
 
-    if b["close"] > b["ema_20"] > b["ema_50"]:
+    fifteen_ema_rising = b["ema_20"] > fifteen["ema_20"].iloc[-4]
+    five_ema_rising = a["ema_20"] > five["ema_20"].iloc[-4]
+    if b["close"] > b["ema_20"] and fifteen_ema_rising:
         long_score += 2
-        long_reasons.append("15m trend is bullish (close > EMA20 > EMA50)")
-    elif b["close"] < b["ema_20"] < b["ema_50"]:
+        long_reasons.append("15m trend is bullish (price above rising EMA20)")
+    elif b["close"] < b["ema_20"] and not fifteen_ema_rising:
         short_score += 2
-        short_reasons.append("15m trend is bearish (close < EMA20 < EMA50)")
+        short_reasons.append("15m trend is bearish (price below falling EMA20)")
 
-    if a["close"] > a["ema_20"] > a["ema_50"]:
+    if a["close"] > a["ema_20"] and five_ema_rising:
         long_score += 2
         long_reasons.append("5m trend confirms bullish alignment")
-    elif a["close"] < a["ema_20"] < a["ema_50"]:
+    elif a["close"] < a["ema_20"] and not five_ema_rising:
         short_score += 2
         short_reasons.append("5m trend confirms bearish alignment")
 
