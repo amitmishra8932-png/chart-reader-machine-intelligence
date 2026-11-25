@@ -38,9 +38,12 @@ def _normalise_candles(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     if timeframe not in {"5m", "15m"}:
         raise ValueError("timeframe must be '5m' or '15m'")
     result = frame.copy()
-    result["timestamp"] = pd.to_datetime(result["timestamp"], errors="coerce", utc=True)
-    if result["timestamp"].isna().any():
+    parsed_timestamps = pd.to_datetime(result["timestamp"], errors="coerce")
+    if parsed_timestamps.isna().any():
         raise ValueError("Candle timestamps must be valid.")
+    if parsed_timestamps.dt.tz is None:
+        raise ValueError("Candle timestamps must include an explicit timezone; naive timestamps are rejected.")
+    result["timestamp"] = parsed_timestamps.dt.tz_convert("UTC")
     for col in ("open", "high", "low", "close", "volume"):
         result[col] = pd.to_numeric(result[col], errors="coerce")
     if not np.isfinite(result[list(("open", "high", "low", "close", "volume"))].to_numpy(dtype=float)).all():
