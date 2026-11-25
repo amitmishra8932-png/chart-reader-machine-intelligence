@@ -81,17 +81,19 @@ class AIReplayTests(unittest.TestCase):
             replay_ai_decisions(five, fifteen, symbol="TEST")
 
 
-    def test_incomplete_final_bars_are_excluded_before_replay(self):
+    def test_incomplete_final_bar_cannot_create_false_session_end_exit(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 25)
         five["is_complete"] = True
-        fifteen["is_complete"] = True
         five.loc[74, "is_complete"] = False
-        decision = {"decision": "LONG", "score": 9, "stop_loss": 98.0, "target": 104.0}
-        with patch("engine.ai_replay.analyse_trade_setup", return_value=decision):
-            report = replay_ai_decisions(five, fifteen, symbol="TEST")
-        incomplete_time = five.loc[74, "timestamp"].isoformat()
-        self.assertTrue(all(trade["exit_time"] != incomplete_time for trade in report["trades"]))
+        with self.assertRaisesRegex(ValueError, "incomplete at the close"):
+            replay_ai_decisions(five, fifteen, symbol="TEST")
+
+    def test_rejects_session_missing_opening_candle(self):
+        five = session_bars("5min", 75).iloc[1:].reset_index(drop=True)
+        fifteen = session_bars("15min", 25)
+        with self.assertRaisesRegex(ValueError, "missing its opening"):
+            replay_ai_decisions(five, fifteen, symbol="TEST")
 
     def test_rejects_internal_missing_candle_after_completion_filter(self):
         five = session_bars("5min", 75)
