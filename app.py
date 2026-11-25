@@ -9,6 +9,7 @@ import streamlit as st
 
 from engine.data_loader import read_uploaded_csv
 from engine.ai_decision import analyse_trade_setup, rank_trade_setups, train_direction_model
+from engine.ai_replay import replay_ai_decisions
 from engine.indicators import add_indicators
 from engine.features import add_features
 from engine.ml_dataset import build_ml_dataset
@@ -351,6 +352,53 @@ with ai_tab:
         "The engine is autonomous in selecting LONG/SHORT/NO TRADE from its programmed evidence and, when approved, an ML overlay. "
         "It is not an autonomous broker or guaranteed-profit system. Live feed accuracy, candle boundaries, liquidity and next-bar confirmation remain required."
     )
+
+    st.divider()
+    st.markdown("#### Historical AI replay laboratory")
+    replay_history = st.session_state.get("historical_data", pd.DataFrame())
+    replay_required = {"timestamp", "symbol", "timeframe", "open", "high", "low", "close", "volume"}
+    if replay_history.empty or replay_required.difference(replay_history.columns):
+        st.info("Fetch multi-symbol 5m and 15m candles in the Historical Data Centre first. Replay requires timestamp, symbol, timeframe and OHLCV.")
+    else:
+        replay_symbols = sorted(replay_history["symbol"].dropna().astype(str).unique())
+        replay_symbol = st.selectbox("Replay stock", replay_symbols, key="ai_replay_symbol")
+        cost_col, slip_col = st.columns(2)
+        replay_cost = cost_col.number_input("Round-trip transaction cost (bps)", min_value=0.0, max_value=500.0, value=10.0, step=1.0, key="ai_replay_cost")
+        replay_slippage = slip_col.number_input("Slippage per side (bps)", min_value=0.0, max_value=200.0, value=5.0, step=1.0, key="ai_replay_slippage")
+        st.caption("Research assumptions only. Replay uses next 5m open, same-session exits, and stop-first resolution when both barriers touch in one candle.")
+        if st.button("Run historical AI replay", key="ai_replay_run", type="primary"):
+            selected = replay_history[replay_history["symbol"].astype(str) == replay_symbol].copy()
+            five_history = selected[selected["timeframe"].astype(str).str.lower() == "5m"].copy()
+            fifteen_history = selected[selected["timeframe"].astype(str).str.lower() == "15m"].copy()
+            try:
+                with st.spinner(f"Replaying {replay_symbol} using completed 5m decisions and 15m context..."):
+                    replay_result = replay_ai_decisions(
+                        five_history, fifteen_history, symbol=replay_symbol,
+                        transaction_cost_bps=replay_cost, slippage_bps=replay_slippage,
+                    )
+                st.session_state["ai_replay_result"] = replay_result
+                st.session_state["ai_replay_symbol"] = replay_symbol
+            except Exception as exc:
+                st.error(f"Historical replay rejected this dataset: {exc}")
+        replay_result = st.session_state.get("ai_replay_result")
+        if replay_result and replay_result.get("symbol") == replay_symbol:
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Closed trades", replay_result["trade_count"])
+            m2.metric("Win rate", f"{replay_result['win_rate_pct']:.1f}%" if replay_result["win_rate_pct"] is not None else "—")
+            m3.metric("Mean net return / trade", f"{replay_result['mean_net_return_pct']:.3f}%" if replay_result["mean_net_return_pct"] is not None else "—")
+            m4.metric("Max drawdown", f"{replay_result['max_drawdown_pct']:.2f}%" if replay_result["max_drawdown_pct"] is not None else "—")
+            st.caption(f"Profit factor: {replay_result['profit_factor']:.2f}" if replay_result["profit_factor"] is not None and np.isfinite(replay_result["profit_factor"]) else "Profit factor: unavailable")
+            if replay_result["trades"]:
+                replay_frame = pd.DataFrame(replay_result["trades"])
+                st.dataframe(replay_frame, use_container_width=True, hide_index=True)
+                st.download_button(
+                    "Download replay trades CSV",
+                    replay_frame.to_csv(index=False).encode("utf-8"),
+                    file_name=f"{replay_symbol.lower()}_ai_replay_trades.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+            st.caption("This is a research replay, not a validated profitability claim. Audit timestamps, session coverage, costs and out-of-sample dates before interpreting metrics.")
 
 with structure_tab:
     st.markdown("### Market Structure Intelligence")
