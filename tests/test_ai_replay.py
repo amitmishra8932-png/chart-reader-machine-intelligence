@@ -80,6 +80,33 @@ class AIReplayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "mismatched timeframe"):
             replay_ai_decisions(five, fifteen, symbol="TEST")
 
+
+    def test_incomplete_bars_are_excluded_before_replay(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 26)
+        five["is_complete"] = True
+        fifteen["is_complete"] = True
+        five.loc[64, "is_complete"] = False
+        decision = {"decision": "LONG", "score": 9, "stop_loss": 98.0, "target": 104.0}
+        with patch("engine.ai_replay.analyse_trade_setup", return_value=decision):
+            report = replay_ai_decisions(five, fifteen, symbol="TEST")
+        self.assertTrue(all(trade["entry_time"] != five.loc[64, "timestamp"].isoformat() for trade in report["trades"]))
+
+    def test_rejects_replay_bars_outside_regular_session(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 26)
+        five.loc[0, "timestamp"] = pd.Timestamp("2026-11-02 08:55", tz="Asia/Kolkata")
+        with self.assertRaisesRegex(ValueError, "outside regular NSE"):
+            replay_ai_decisions(five, fifteen, symbol="TEST")
+
+    def test_rejects_ambiguous_completion_flags(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 26)
+        five["is_complete"] = True
+        five.loc[0, "is_complete"] = "unknown"
+        with self.assertRaisesRegex(ValueError, "explicit true/false"):
+            replay_ai_decisions(five, fifteen, symbol="TEST")
+
     def test_rejects_invalid_cost_assumptions(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 26)
