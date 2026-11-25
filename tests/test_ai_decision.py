@@ -35,6 +35,12 @@ class DecisionEngineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Invalid OHLC"):
             analyse_trade_setup(bad, make_bars(90, "15min"), symbol="AAA")
 
+    def test_rejects_timezone_naive_candles(self):
+        naive = make_bars()
+        naive["timestamp"] = naive["timestamp"].dt.tz_localize(None)
+        with self.assertRaisesRegex(ValueError, "explicit timezone"):
+            analyse_trade_setup(naive, make_bars(90, "15min"), symbol="NAIVE")
+
     def test_duplicate_timestamps_are_rejected(self):
         bad = make_bars()
         bad.loc[1, "timestamp"] = bad.loc[0, "timestamp"]
