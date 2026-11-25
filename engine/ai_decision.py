@@ -244,9 +244,18 @@ def train_direction_model(
     if data["timestamp"].isna().any():
         raise ValueError("ML training timestamps must be valid.")
     data = data.sort_values(["symbol", "timeframe", "timestamp"], kind="mergesort").reset_index(drop=True)
-    data = _enrich(data)
-    group_keys = [data["symbol"].astype(str), data["timeframe"].astype(str), data["timestamp"].dt.date]
-    grouped = data.groupby([data["symbol"].astype(str), data["timeframe"].astype(str), data["timestamp"].dt.date], sort=False)
+    # Indicators and VWAP must be computed independently per symbol/timeframe.
+    enriched = [
+        _enrich(group.sort_values("timestamp", kind="mergesort"))
+        for _, group in data.groupby(["symbol", "timeframe"], sort=False)
+    ]
+    data = pd.concat(enriched, ignore_index=True).sort_values(
+        ["symbol", "timeframe", "timestamp"], kind="mergesort"
+    ).reset_index(drop=True)
+    grouped = data.groupby(
+        [data["symbol"].astype(str), data["timeframe"].astype(str), data["timestamp"].dt.date],
+        sort=False,
+    )
     data["future_close_3"] = grouped["close"].shift(-3)
     forward = (data["future_close_3"] / data["close"] - 1.0) * 100.0
     data["target"] = np.select(
