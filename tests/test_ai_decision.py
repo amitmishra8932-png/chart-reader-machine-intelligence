@@ -152,6 +152,12 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertGreaterEqual(result["reward_risk"], 1.8)
         self.assertLess(result["target"], result["entry_reference"])
 
+    def test_ml_training_rejects_timezone_naive_timestamps(self):
+        frame = make_bars(90).assign(symbol="AAA", timeframe="5m")
+        frame["timestamp"] = frame["timestamp"].dt.tz_localize(None)
+        with self.assertRaisesRegex(ValueError, "explicit timezone"):
+            train_direction_model(frame)
+
     def test_ml_training_fails_closed_on_insufficient_history(self):
         frame = make_bars(90).assign(symbol="AAA", timeframe="5m")
         model, report = train_direction_model(frame)
