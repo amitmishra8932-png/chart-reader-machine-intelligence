@@ -11,6 +11,12 @@ Provide an explainable decision-support engine that independently evaluates comp
 - Produces a reference close, stop, target, score and evidence. Entry requires next-bar confirmation.
 - Ranks at most three qualified setups; no setup is a valid decision.
 
+## Multi-timeframe integrity
+- The latest 5m entry and 15m context bars are checked using interval end times.
+- Timezone-naive, misaligned, cross-session, stale, and future-dated context is rejected with NO TRADE.
+- The AI Trade Desk shows completed-bar counts per subscribed symbol so warm-up status is visible.
+- Historical candles are not silently mixed into the live buffer until 5paisa timestamp timezone and candle-boundary semantics are verified against an authenticated account.
+
 ## Machine-learning overlay
 The optional RandomForest overlay trains on 3-bar forward returns grouped by symbol, timeframe and session. It uses a chronological 80/20 session holdout, training-only median imputation, and a conservative approval gate: holdout balanced accuracy must exceed the validation majority-class baseline by at least 2 percentage points. If the gate fails, the model is disabled and cannot influence recommendations.
 
