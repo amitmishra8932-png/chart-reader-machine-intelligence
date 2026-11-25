@@ -25,9 +25,9 @@ def make_bars(periods=90, freq="5min", drift=0.0008, seed=7):
 
 class DecisionEngineTests(unittest.TestCase):
     def test_insufficient_history_returns_no_trade(self):
-        result = analyse_trade_setup(make_bars(30), make_bars(30, "15min"), symbol="AAA")
+        result = analyse_trade_setup(make_bars(10), make_bars(10, "15min"), symbol="AAA")
         self.assertEqual(result["decision"], "NO TRADE")
-        self.assertIn("55", result["reason"])
+        self.assertIn("21", result["reason"])
 
     def test_rejects_invalid_candles(self):
         bad = make_bars()
