@@ -239,6 +239,8 @@ def train_direction_model(
     required = {"timestamp", "symbol", "timeframe", "open", "high", "low", "close", "volume"}
     if required.difference(candles.columns):
         raise ValueError(f"ML training requires columns: {sorted(required)}")
+    if not np.isfinite(neutral_band_pct) or neutral_band_pct <= 0:
+        raise ValueError("neutral_band_pct must be finite and positive.")
     data = candles.copy()
     # Train only on the 5m entry horizon; mixing 5m and 15m labels would
     # make a three-bar target represent two different holding periods.
@@ -251,7 +253,7 @@ def train_direction_model(
     data = data.sort_values(["symbol", "timeframe", "timestamp"], kind="mergesort").reset_index(drop=True)
     # Indicators and VWAP must be computed independently per symbol/timeframe.
     enriched = [
-        _enrich(group.sort_values("timestamp", kind="mergesort"))
+        _enrich(_normalise_candles(group, "5m"))
         for _, group in data.groupby(["symbol", "timeframe"], sort=False)
     ]
     data = pd.concat(enriched, ignore_index=True).sort_values(
@@ -265,7 +267,7 @@ def train_direction_model(
     forward = (data["future_close_3"] / data["close"] - 1.0) * 100.0
     data["target"] = np.select(
         [forward > neutral_band_pct, forward < -neutral_band_pct], [1, -1], default=0
-    )
+    ).astype(float)
     data.loc[data["future_close_3"].isna(), "target"] = np.nan
     data = data.dropna(subset=["target"]).copy()
     dates = sorted(data["timestamp"].dt.date.unique())
@@ -291,13 +293,15 @@ def train_direction_model(
     pipeline.fit(train[features], train["target"].astype(int))
     predicted = pipeline.predict(validation[features])
     score = float(balanced_accuracy_score(validation["target"].astype(int), predicted))
-    majority = float(validation["target"].value_counts(normalize=True).max())
-    approved = score >= majority + 0.02
+    majority_class = int(validation["target"].mode().iloc[0])
+    majority_prediction = np.full(len(validation), majority_class, dtype=int)
+    baseline = float(balanced_accuracy_score(validation["target"].astype(int), majority_prediction))
+    approved = score >= baseline + 0.02
     report = {
-        "approved": bool(approved), "reason": "Holdout gate passed." if approved else "Holdout balanced accuracy did not beat majority baseline by 2 percentage points.",
+        "approved": bool(approved), "reason": "Holdout gate passed." if approved else "Holdout balanced accuracy did not beat the majority-class balanced-accuracy baseline by 2 percentage points.",
         "train_rows": int(len(train)), "validation_rows": int(len(validation)),
         "first_validation_date": str(min(validation_dates)), "last_validation_date": str(max(validation_dates)),
-        "balanced_accuracy": round(score, 4), "majority_baseline": round(majority, 4),
+        "balanced_accuracy": round(score, 4), "majority_baseline": round(baseline, 4),
         "features": features, "target_definition": f"3-bar close return; LONG > {neutral_band_pct:.2f}%, SHORT < -{neutral_band_pct:.2f}%, otherwise neutral",
     }
     return (pipeline if approved else None), report
