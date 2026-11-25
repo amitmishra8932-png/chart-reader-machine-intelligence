@@ -90,6 +90,66 @@ class AIReplayTests(unittest.TestCase):
         self.assertEqual(first["exit_reason"], "STOP")
         self.assertLess(first["exit_price"], 95.0)
 
+
+    def test_long_entry_gap_that_degrades_actual_reward_risk_is_skipped(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 25)
+        five.loc[64, ["open", "high", "low", "close"]] = [102.0, 103.0, 101.0, 102.5]
+        decision = {
+            "decision": "LONG", "score": 9, "stop_loss": 98.0, "target": 104.0,
+        }
+        with patch("engine.ai_replay.analyse_trade_setup", return_value=decision):
+            report = replay_ai_decisions(five, fifteen, symbol="TEST", slippage_bps=5)
+        self.assertEqual(report["trade_count"], 0)
+        self.assertGreater(report["skipped"]["invalid_next_open"], 0)
+
+    def test_short_entry_gap_that_degrades_actual_reward_risk_is_skipped(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 25)
+        five.loc[64, ["open", "high", "low", "close"]] = [98.0, 99.0, 97.0, 97.5]
+        decision = {
+            "decision": "SHORT", "score": 9, "stop_loss": 102.0, "target": 96.0,
+        }
+        with patch("engine.ai_replay.analyse_trade_setup", return_value=decision):
+            report = replay_ai_decisions(five, fifteen, symbol="TEST", slippage_bps=5)
+        self.assertEqual(report["trade_count"], 0)
+        self.assertGreater(report["skipped"]["invalid_next_open"], 0)
+
+    def test_trade_records_actual_reward_risk_after_entry_slippage(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 25)
+        five.loc[64, ["open", "high", "low", "close"]] = [100.0, 103.0, 99.0, 101.0]
+        decision = {
+            "decision": "LONG", "score": 9, "stop_loss": 98.0, "target": 104.0,
+        }
+        with patch("engine.ai_replay.analyse_trade_setup", return_value=decision):
+            report = replay_ai_decisions(five, fifteen, symbol="TEST", slippage_bps=5)
+        self.assertGreater(report["trade_count"], 0)
+        trade = report["trades"][0]
+        expected = (trade["target"] - trade["entry_price"]) / (trade["entry_price"] - trade["stop_loss"])
+        self.assertAlmostEqual(trade["actual_reward_risk"], expected)
+        self.assertGreaterEqual(trade["actual_reward_risk"], 1.8)
+
+    def test_unexpected_decision_engine_exception_fails_replay(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 25)
+        with patch("engine.ai_replay.analyse_trade_setup", side_effect=RuntimeError("engine defect")):
+            with self.assertRaisesRegex(RuntimeError, "engine defect"):
+                replay_ai_decisions(five, fifteen, symbol="TEST")
+
+    def test_short_gap_through_stop_fills_at_worse_open(self):
+        five = session_bars("5min", 75)
+        fifteen = session_bars("15min", 25)
+        five.loc[64, ["open", "high", "low", "close"]] = [105.0, 106.0, 104.0, 105.5]
+        decision = {
+            "decision": "SHORT", "score": 9, "stop_loss": 102.0, "target": 96.0,
+        }
+        with patch("engine.ai_replay.analyse_trade_setup", return_value=decision):
+            report = replay_ai_decisions(five, fifteen, symbol="TEST", slippage_bps=5)
+        first = report["trades"][0]
+        self.assertEqual(first["exit_reason"], "STOP")
+        self.assertGreater(first["exit_price"], 105.0)
+
     def test_rejects_invalid_ohlc_geometry(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 25)
