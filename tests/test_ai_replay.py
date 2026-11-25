@@ -40,6 +40,43 @@ class AIReplayTests(unittest.TestCase):
         self.assertLess(first["exit_price"], 100.0)
         self.assertEqual(first["bars_held"], 1)
 
+
+    def test_prior_sessions_warm_up_indicators_without_using_stale_context(self):
+        five = pd.concat([
+            session_bars("5min", 75, start="2026-11-02 09:15"),
+            session_bars("5min", 75, start="2026-11-03 09:15"),
+        ], ignore_index=True)
+        fifteen = pd.concat([
+            session_bars("15min", 25, start="2026-11-02 09:15"),
+            session_bars("15min", 25, start="2026-11-03 09:15"),
+        ], ignore_index=True)
+        observed = []
+
+        def no_trade_with_observation(five_history, fifteen_history, **kwargs):
+            observed.append((
+                five_history["timestamp"].iloc[-1].tz_convert("Asia/Kolkata"),
+                len(five_history),
+                len(fifteen_history),
+                fifteen_history["timestamp"].iloc[-1].tz_convert("Asia/Kolkata"),
+            ))
+            return {"decision": "NO TRADE"}
+
+        with patch("engine.ai_replay.analyse_trade_setup", side_effect=no_trade_with_observation):
+            report = replay_ai_decisions(five, fifteen, symbol="TEST")
+
+        next_day_opening_context = [
+            item for item in observed
+            if item[0].date() == pd.Timestamp("2026-11-03").date()
+        ]
+        self.assertTrue(next_day_opening_context)
+        first = next_day_opening_context[0]
+        # First two 5m bars cannot use yesterday's stale 15m context.
+        self.assertEqual(first[0].strftime("%H:%M"), "09:25")
+        self.assertEqual(first[3].strftime("%H:%M"), "09:15")
+        self.assertGreaterEqual(first[1], 21)
+        self.assertGreaterEqual(first[2], 21)
+        self.assertEqual(report["trade_count"], 0)
+
     def test_gap_through_long_stop_fills_at_worse_open(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 25)
