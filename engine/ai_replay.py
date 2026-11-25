@@ -30,6 +30,12 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         raise ValueError("Replay OHLCV values must be finite.")
     if (data[["open", "high", "low", "close"]] <= 0).any().any() or (data["volume"] < 0).any():
         raise ValueError("Replay prices must be positive and volume non-negative.")
+    invalid_geometry = (
+        (data["high"] < data[["open", "close", "low"]].max(axis=1))
+        | (data["low"] > data[["open", "close", "high"]].min(axis=1))
+    )
+    if invalid_geometry.any():
+        raise ValueError("Replay contains invalid OHLC candle geometry.")
     if data["timestamp"].duplicated().any():
         raise ValueError("Replay contains duplicate timestamps.")
     data = data.sort_values("timestamp", kind="mergesort").reset_index(drop=True)
@@ -142,8 +148,15 @@ def replay_ai_decisions(
             else:
                 stop_hit, target_hit = high >= stop, low <= target
             if stop_hit:
-                # Conservative resolution when both barriers trade in the same bar.
-                exit_raw, exit_reason, exit_index = stop, "STOP", j
+                # Stop first when both barriers trade; honour worse opening gaps.
+                opening = float(bar["open"])
+                if side == "LONG" and opening < stop:
+                    exit_raw = opening
+                elif side == "SHORT" and opening > stop:
+                    exit_raw = opening
+                else:
+                    exit_raw = stop
+                exit_reason, exit_index = "STOP", j
                 break
             if target_hit:
                 exit_raw, exit_reason, exit_index = target, "TARGET", j
