@@ -98,7 +98,11 @@ class AIReplayTests(unittest.TestCase):
         decision = {
             "decision": "LONG", "score": 9, "stop_loss": 98.0, "target": 104.0,
         }
-        with patch("engine.ai_replay.analyse_trade_setup", side_effect=[decision, {"decision": "NO TRADE"}]):
+        calls = {"count": 0}
+        def first_signal_only(*args, **kwargs):
+            calls["count"] += 1
+            return decision if calls["count"] == 1 else {"decision": "NO TRADE"}
+        with patch("engine.ai_replay.analyse_trade_setup", side_effect=first_signal_only):
             report = replay_ai_decisions(five, fifteen, symbol="TEST", slippage_bps=5)
         self.assertEqual(report["trade_count"], 0)
         self.assertGreater(report["skipped"]["invalid_next_open"], 0)
