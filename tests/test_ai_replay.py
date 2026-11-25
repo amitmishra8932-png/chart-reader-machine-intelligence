@@ -94,7 +94,7 @@ class AIReplayTests(unittest.TestCase):
     def test_long_entry_gap_that_degrades_actual_reward_risk_is_skipped(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 25)
-        five.loc[64, ["open", "high", "low", "close"]] = [102.0, 103.0, 101.0, 102.5]
+        five.loc[63, ["open", "high", "low", "close"]] = [102.0, 103.0, 101.0, 102.5]
         decision = {
             "decision": "LONG", "score": 9, "stop_loss": 98.0, "target": 104.0,
         }
@@ -110,11 +110,15 @@ class AIReplayTests(unittest.TestCase):
     def test_short_entry_gap_that_degrades_actual_reward_risk_is_skipped(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 25)
-        five.loc[64, ["open", "high", "low", "close"]] = [98.0, 99.0, 97.0, 97.5]
+        five.loc[63, ["open", "high", "low", "close"]] = [98.0, 99.0, 97.0, 97.5]
         decision = {
             "decision": "SHORT", "score": 9, "stop_loss": 102.0, "target": 96.0,
         }
-        with patch("engine.ai_replay.analyse_trade_setup", side_effect=[decision, {"decision": "NO TRADE"}]):
+        calls = {"count": 0}
+        def first_signal_only(*args, **kwargs):
+            calls["count"] += 1
+            return decision if calls["count"] == 1 else {"decision": "NO TRADE"}
+        with patch("engine.ai_replay.analyse_trade_setup", side_effect=first_signal_only):
             report = replay_ai_decisions(five, fifteen, symbol="TEST", slippage_bps=5)
         self.assertEqual(report["trade_count"], 0)
         self.assertGreater(report["skipped"]["invalid_next_open"], 0)
