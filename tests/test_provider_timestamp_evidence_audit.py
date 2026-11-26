@@ -47,8 +47,11 @@ class ProviderTimestampEvidenceAuditTests(unittest.TestCase):
         audited, report = audit_frame(frame)
         self.assertEqual(report["timezone_evidence"], "explicit_offset_present")
         self.assertEqual(report["rows_with_explicit_offset"], 4)
-        self.assertEqual(report["replay_timestamp_gate"], "pass")
+        self.assertEqual(report["replay_timestamp_gate"], "blocked")
+        self.assertTrue(any("start/end semantics" in item for item in report["blockers"]))
         self.assertTrue(any("candle starts or ends" in item for item in report["limitations"]))
+        _, confirmed = audit_frame(frame, provider_labeling_confirmed=True)
+        self.assertEqual(confirmed["replay_timestamp_gate"], "pass")
 
     def test_flags_post_continuous_session_rows_without_calling_them_cas(self):
         frame = sample_frame()
