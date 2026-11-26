@@ -379,7 +379,8 @@ with ai_tab:
                 with st.spinner(f"Replaying {replay_symbol} using completed 5m decisions and 15m context..."):
                     replay_result = replay_ai_decisions(
                         five_history, fifteen_history, symbol=replay_symbol,
-                        transaction_cost_bps=replay_cost, slippage_bps=replay_slippage,\n                        cas_eligible=replay_cas_eligible,
+                        transaction_cost_bps=replay_cost, slippage_bps=replay_slippage,
+                        cas_eligible=replay_cas_eligible,
                     )
                 st.session_state["ai_replay_result"] = replay_result
                 st.session_state["ai_replay_symbol"] = replay_symbol
