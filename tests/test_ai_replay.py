@@ -223,6 +223,46 @@ class AIReplayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "explicit true/false"):
             replay_ai_decisions(five, fifteen, symbol="TEST")
 
+    def test_cas_eligible_sessions_exclude_auction_bars_and_validate_1515_close(self):
+        five = session_bars("5min", 72)
+        fifteen = session_bars("15min", 24)
+        five_cas = session_bars("5min", 1, start="2026-11-02 15:15")
+        fifteen_cas = session_bars("15min", 1, start="2026-11-02 15:15")
+        five = pd.concat([five, five_cas], ignore_index=True)
+        fifteen = pd.concat([fifteen, fifteen_cas], ignore_index=True)
+        with patch("engine.ai_replay.analyse_trade_setup", return_value={"decision": "NO TRADE"}):
+            report = replay_ai_decisions(
+                five, fifteen, symbol="TEST", cas_eligible=True,
+            )
+        self.assertEqual(report["trade_count"], 0)
+
+    def test_cas_eligible_session_missing_last_continuous_bar_is_rejected(self):
+        five = session_bars("5min", 71)
+        fifteen = session_bars("15min", 24)
+        with self.assertRaisesRegex(ValueError, "incomplete at the close for 5m"):
+            replay_ai_decisions(five, fifteen, symbol="TEST", cas_eligible=True)
+
+    def test_configured_special_session_is_excluded_from_regular_replay(self):
+        five = pd.concat([
+            session_bars("5min", 75, start="2026-11-02 09:15"),
+            session_bars("5min", 75, start="2026-11-03 09:15"),
+            session_bars("5min", 1, start="2026-11-08 14:20"),
+        ], ignore_index=True)
+        fifteen = pd.concat([
+            session_bars("15min", 25, start="2026-11-02 09:15"),
+            session_bars("15min", 25, start="2026-11-03 09:15"),
+            session_bars("15min", 1, start="2026-11-08 14:20"),
+        ], ignore_index=True)
+        observed = []
+        def no_trade(five_history, fifteen_history, **kwargs):
+            observed.append(five_history["timestamp"].iloc[-1])
+            return {"decision": "NO TRADE"}
+        with patch("engine.ai_replay.analyse_trade_setup", side_effect=no_trade):
+            report = replay_ai_decisions(five, fifteen, symbol="TEST")
+        self.assertEqual(report["trade_count"], 0)
+        self.assertTrue(observed)
+        self.assertFalse(any(ts.tz_convert("Asia/Kolkata").date() == pd.Timestamp("2026-11-08").date() for ts in observed))
+
     def test_rejects_invalid_cost_assumptions(self):
         five = session_bars("5min", 75)
         fifteen = session_bars("15min", 25)
