@@ -57,9 +57,13 @@ class FivePaisaAdapterTests(unittest.TestCase):
             ]},
         }
         frame = parse_historical_candles(payload)
-        self.assertEqual(list(frame.columns), ["timestamp", "open", "high", "low", "close", "volume"])
+        self.assertEqual(
+            list(frame.columns),
+            ["timestamp", "provider_timestamp_raw", "open", "high", "low", "close", "volume"],
+        )
         self.assertEqual(len(frame), 2)
         self.assertEqual(frame.iloc[0]["close"], 103)
+        self.assertEqual(frame.iloc[0]["provider_timestamp_raw"], "2026-11-10T09:15:00")
 
     def test_historical_parser_preserves_duplicate_timestamps(self):
         payload = {"data": {"candles": [
@@ -69,6 +73,10 @@ class FivePaisaAdapterTests(unittest.TestCase):
         frame = parse_historical_candles(payload)
         self.assertEqual(len(frame), 2)
         self.assertEqual(frame["timestamp"].duplicated().sum(), 1)
+        self.assertEqual(
+            frame["provider_timestamp_raw"].tolist(),
+            ["2026-11-10T09:15:00", "2026-11-10T09:15:00"],
+        )
 
     def test_historical_parser_preserves_malformed_rows_for_audit(self):
         payload = {"data": {"candles": [
