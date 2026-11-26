@@ -15,7 +15,7 @@ Provide an explainable decision-support engine that independently evaluates comp
 - The latest 5m entry and 15m context bars are checked using interval end times.
 - Timezone-naive, misaligned, cross-session, stale, and future-dated context is rejected with NO TRADE.
 - The AI Trade Desk shows completed-bar counts per subscribed symbol so warm-up status is visible.
-- Historical candles are not silently mixed into the live buffer until 5paisa timestamp timezone and candle-boundary semantics are verified against an authenticated account.
+- Historical candles are not silently mixed into the live buffer until 5paisa timestamp timezone and candle-boundary semantics are verified against an authenticated account. The historical adapter retains the exact provider timestamp text in `provider_timestamp_raw` beside the parsed timestamp to support that audit.
 - Historical replay supports an explicit CAS-eligible mode: it excludes auction bars and applies the dated continuous-session close (15:15 before 2026-12-07; 15:30 from 2026-12-07). The caller must supply correct per-security CAS eligibility from the exchange security master.
 - Configured special-session dates (including the 2026-11-08 Muhurat session) are excluded from the regular-session replay; they require a separate special-session research path.
 
