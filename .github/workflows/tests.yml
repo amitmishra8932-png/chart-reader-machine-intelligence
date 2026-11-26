@@ -1,7 +1,7 @@
 name: Python engine tests
 on:
   push:
-    branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation, phase-8-2c-detector-boundary-isolation, phase-8-3-causal-feature-engineering, phase-8-4-validation-and-closed-bar-context, phase-8-5-leakage-safe-ml-targets, phase-8-6-baseline-ml-evaluation, phase-8-7-feature-ablation-robustness, phase-8-8-neutral-band-sensitivity, phase-8-9-pattern-context-study, phase-8-10-cross-timeframe-robustness, phase-8-11-event-level-alignment, phase-8-12-data-integrity, live-5paisa-readonly-monitor]
+    branches: [research/ai-historical-replay-engine, main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation, phase-8-2c-detector-boundary-isolation, phase-8-3-causal-feature-engineering, phase-8-4-validation-and-closed-bar-context, phase-8-5-leakage-safe-ml-targets, phase-8-6-baseline-ml-evaluation, phase-8-7-feature-ablation-robustness, phase-8-8-neutral-band-sensitivity, phase-8-9-pattern-context-study, phase-8-10-cross-timeframe-robustness, phase-8-11-event-level-alignment, phase-8-12-data-integrity, live-5paisa-readonly-monitor]
   pull_request:
     branches: [main, phase-8-2a-leakage-safe-outcomes, phase-8-2b-pattern-registry-reconciliation, phase-8-2c-detector-boundary-isolation, phase-8-3-causal-feature-engineering, phase-8-4-validation-and-closed-bar-context, phase-8-5-leakage-safe-ml-targets, phase-8-6-baseline-ml-evaluation, phase-8-7-feature-ablation-robustness, phase-8-8-neutral-band-sensitivity, phase-8-9-pattern-context-study, phase-8-10-cross-timeframe-robustness, phase-8-11-event-level-alignment, phase-8-12-data-integrity]
 jobs:

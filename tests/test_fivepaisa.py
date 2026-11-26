@@ -57,11 +57,51 @@ class FivePaisaAdapterTests(unittest.TestCase):
             ]},
         }
         frame = parse_historical_candles(payload)
-        self.assertEqual(list(frame.columns), ["timestamp", "open", "high", "low", "close", "volume"])
+        self.assertEqual(
+            list(frame.columns),
+            ["timestamp", "provider_timestamp_raw", "open", "high", "low", "close", "volume"],
+        )
         self.assertEqual(len(frame), 2)
         self.assertEqual(frame.iloc[0]["close"], 103)
+        self.assertEqual(frame.iloc[0]["provider_timestamp_raw"], "2026-11-10T09:15:00")
 
+    def test_historical_parser_preserves_duplicate_timestamps(self):
+        payload = {"data": {"candles": [
+            ["2026-11-10T09:15:00", 100, 105, 99, 103, 1200],
+            ["2026-11-10T09:15:00", 100, 106, 98, 104, 1300],
+        ]}}
+        frame = parse_historical_candles(payload)
+        self.assertEqual(len(frame), 2)
+        self.assertEqual(frame["timestamp"].duplicated().sum(), 1)
+        self.assertEqual(
+            frame["provider_timestamp_raw"].tolist(),
+            ["2026-11-10T09:15:00", "2026-11-10T09:15:00"],
+        )
 
+    def test_historical_parser_preserves_malformed_rows_for_audit(self):
+        payload = {"data": {"candles": [
+            ["2026-11-10T09:15:00", 100, 105, 99, 103, 1200],
+            ["bad-timestamp", 100, "bad-high", 99, 103, 1200],
+        ]}}
+        frame = parse_historical_candles(payload)
+        self.assertEqual(len(frame), 2)
+        self.assertTrue(pd.isna(frame.iloc[1]["timestamp"]))
+        self.assertTrue(pd.isna(frame.iloc[1]["high"]))
+
+    @patch("providers.fivepaisa.requests.get")
+    def test_historical_fetch_filters_calendar_dates_without_stripping_timezone(self, mock_get):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {"data": {"candles": [
+            ["2026-11-10T09:15:00+05:30", 100, 105, 99, 103, 1200],
+            ["2026-11-12T15:15:00+05:30", 103, 106, 102, 105, 1500],
+            ["2026-11-13T09:15:00+05:30", 105, 107, 104, 106, 1600],
+        ]}}
+        mock_get.return_value = response
+        frame = fetch_historical_candles("token", 2885, "5m", "2026-11-10", "2026-11-12")
+        self.assertEqual(len(frame), 2)
+        self.assertIsNotNone(frame["timestamp"].dt.tz)
+        self.assertEqual(frame.iloc[-1]["timestamp"].date().isoformat(), "2026-11-12")
 
     @patch("providers.fivepaisa.requests.post")
     def test_market_feed_resolves_scrip_codes_from_scripdata(self, mock_post):
@@ -102,7 +142,6 @@ class FivePaisaAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "did not return a valid NSE cash ScripCode"):
             resolve_scrip_codes_via_market_feed("test-token", "key", "CLIENT1", ["HDFCBANK"])
 
-
     @patch("providers.fivepaisa.requests.get")
     def test_scrip_master_download_accepts_gzip_csv(self, mock_get):
         import gzip
@@ -129,7 +168,6 @@ class FivePaisaAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "HTTP 503"):
             fetch_scrip_master()
 
-
     @patch("providers.fivepaisa.requests.get")
     def test_scrip_master_uses_official_all_segments_dump_and_filters_nse_cash(self, mock_get):
         response = Mock()
@@ -149,7 +187,6 @@ class FivePaisaAdapterTests(unittest.TestCase):
         self.assertEqual(resolve_scrip_code(master, "HDFCBANK"), 1333)
         self.assertEqual(len(master), 1)
 
-
     def test_scrip_master_rejects_html_response(self):
         from providers.fivepaisa import _decode_scrip_master_response
         with self.assertRaisesRegex(RuntimeError, "HTML instead of CSV"):
@@ -158,6 +195,7 @@ class FivePaisaAdapterTests(unittest.TestCase):
     def test_scrip_master_reports_changed_columns(self):
         with self.assertRaisesRegex(RuntimeError, "Received columns"):
             parse_scrip_master("unexpected,columns\na,b\n")
+
 
 if __name__ == "__main__":
     unittest.main()

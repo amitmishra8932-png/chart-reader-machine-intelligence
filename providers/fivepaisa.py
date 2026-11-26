@@ -47,7 +47,7 @@ def get_credentials(secrets) -> dict:
     try:
         nested = secrets.get("fivepaisa", {}) or {}
     except Exception:
-        nested = {}
+        pass
     class SecretView:
         def get(self, key, default=None):
             value = _secret(secrets, key)
@@ -175,7 +175,6 @@ def parse_scrip_master(csv_text: str) -> pd.DataFrame:
     return frame.drop_duplicates("symbol_key")
 
 
-
 def resolve_scrip_codes_via_market_feed(
     access_token: str, api_key: str, client_code: str, symbols: list[str],
 ) -> dict[str, int]:
@@ -276,6 +275,12 @@ def resolve_scrip_code(master: pd.DataFrame, symbol: str) -> int:
 
 
 def parse_historical_candles(payload: dict) -> pd.DataFrame:
+    """Parse provider candles without hiding data-quality defects.
+
+    Duplicate timestamps and malformed OHLCV rows are deliberately retained
+    for the downstream audit. Timestamp timezone/label semantics are not
+    inferred here; they must be established from authenticated provider data.
+    """
     body = payload.get("data") or payload.get("Data") or payload.get("body") or {}
     candles = body.get("candles") or body.get("Candles") or []
     if not candles:
@@ -285,13 +290,17 @@ def parse_historical_candles(payload: dict) -> pd.DataFrame:
     frame = pd.DataFrame(candles)
     if frame.shape[1] < 6:
         raise RuntimeError("5paisa candle response did not contain timestamp, OHLC and volume.")
-    frame = frame.iloc[:, :6]
+    frame = frame.iloc[:, :6].copy()
     frame.columns = ["timestamp", "open", "high", "low", "close", "volume"]
+    # Keep the exact provider-supplied timestamp text alongside the parsed
+    # value. This is essential for auditing timezone offsets and candle labels;
+    # parsing must not erase the original evidence.
+    frame.insert(1, "provider_timestamp_raw", frame["timestamp"].astype("string"))
     frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
     for col in ["open", "high", "low", "close", "volume"]:
         frame[col] = pd.to_numeric(frame[col], errors="coerce")
-    frame = frame.dropna(subset=["timestamp", "open", "high", "low", "close"])
-    return frame.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
+    # Stable sorting preserves the original order of duplicate provider rows.
+    return frame.sort_values("timestamp", kind="mergesort", na_position="last").reset_index(drop=True)
 
 
 def fetch_historical_candles(
@@ -315,10 +324,9 @@ def fetch_historical_candles(
         raise ValueError("5paisa intraday historical requests are limited to six months per request.")
     url = HISTORICAL_URL.format(scrip_code=int(scrip_code), interval=interval)
     try:
-        # The provider documentation does not clearly state whether `end` is
-        # inclusive. Request one extra calendar day, then enforce the user's
-        # inclusive date range locally. This works with either provider
-        # interpretation and prevents next-day candles leaking into the export.
+        # The provider documentation does not clearly state whether end is
+        # inclusive. Request one extra calendar day, then enforce the requested
+        # local calendar-date range without assuming a timezone for the bars.
         request_end = end + pd.Timedelta(days=1)
         response = requests.get(
             url,
@@ -330,7 +338,6 @@ def fetch_historical_candles(
             timeout=30,
         )
         if not response.ok:
-            # Keep provider diagnostics useful without ever echoing request headers.
             detail = (response.text or "").strip().replace("\n", " ")[:400]
             raise RuntimeError(
                 f"5paisa historical API returned HTTP {response.status_code} "
@@ -346,8 +353,12 @@ def fetch_historical_candles(
             "Check Streamlit network access and retry."
         ) from exc
     frame = parse_historical_candles(payload)
-    lower_bound = pd.Timestamp(start)
-    upper_bound = pd.Timestamp(end) + pd.Timedelta(days=1)
-    return frame.loc[
-        (frame["timestamp"] >= lower_bound) & (frame["timestamp"] < upper_bound)
-    ].reset_index(drop=True)
+    # Compare calendar dates per timestamp so both naive and offset-aware ISO
+    # provider values can be retained without silently converting their clock.
+    timestamp_dates = frame["timestamp"].map(
+        lambda value: value.date() if pd.notna(value) else None
+    )
+    in_requested_range = timestamp_dates.map(
+        lambda value: value is not None and start <= value <= end
+    )
+    return frame.loc[in_requested_range].reset_index(drop=True)
