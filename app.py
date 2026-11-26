@@ -365,7 +365,12 @@ with ai_tab:
         cost_col, slip_col = st.columns(2)
         replay_cost = cost_col.number_input("Round-trip transaction cost (bps)", min_value=0.0, max_value=500.0, value=10.0, step=1.0, key="ai_replay_cost")
         replay_slippage = slip_col.number_input("Slippage per side (bps)", min_value=0.0, max_value=200.0, value=5.0, step=1.0, key="ai_replay_slippage")
-        st.caption("Research assumptions only. Replay uses next 5m open, same-session exits, and stop-first resolution when both barriers touch in one candle.")
+        replay_cas_eligible = st.checkbox(
+            "This security is eligible for NSE Closing Auction Session (CAS)",
+            value=False, key="ai_replay_cas_eligible",
+            help="Use the official NSE security master. Before 7 Dec 2026, continuous trading ends at 15:15 for CAS securities; from 7 Dec, it ends at 15:30.",
+        )
+        st.caption("Research assumptions only. Replay uses next 5m open, same-session exits, and stop-first resolution when both barriers touch in one candle. Configured special-session dates are excluded.")
         if st.button("Run historical AI replay", key="ai_replay_run", type="primary"):
             selected = replay_history[replay_history["symbol"].astype(str) == replay_symbol].copy()
             five_history = selected[selected["timeframe"].astype(str).str.lower() == "5m"].copy()
@@ -374,7 +379,7 @@ with ai_tab:
                 with st.spinner(f"Replaying {replay_symbol} using completed 5m decisions and 15m context..."):
                     replay_result = replay_ai_decisions(
                         five_history, fifteen_history, symbol=replay_symbol,
-                        transaction_cost_bps=replay_cost, slippage_bps=replay_slippage,
+                        transaction_cost_bps=replay_cost, slippage_bps=replay_slippage,\n                        cas_eligible=replay_cas_eligible,
                     )
                 st.session_state["ai_replay_result"] = replay_result
                 st.session_state["ai_replay_symbol"] = replay_symbol
