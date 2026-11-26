@@ -515,6 +515,19 @@ with historical_tab:
         p.metric("Stocks received", int(hist["symbol"].nunique()))
         q.metric("Candle rows", f"{len(hist):,}")
         r.metric("Timeframes", ", ".join(sorted(hist["timeframe"].unique())))
+        st.download_button(
+            "Download raw 5paisa timestamp audit CSV",
+            hist.to_csv(index=False).encode("utf-8"),
+            file_name="fivepaisa_provider_timestamp_audit.csv",
+            mime="text/csv",
+            help="Includes provider_timestamp_raw exactly as returned, alongside parsed timestamps and OHLCV.",
+            use_container_width=True,
+        )
+        st.caption(
+            "For provider verification, fetch the same liquid NSE symbol in both 5m and 15m intervals "
+            "covering at least two complete regular sessions. Download this CSV without editing it. "
+            "Do not share API keys, access tokens, or login details."
+        )
         chosen_symbol = st.selectbox("Preview stock", sorted(hist["symbol"].unique()))
         choices = sorted(hist.loc[hist["symbol"] == chosen_symbol, "timeframe"].unique())
         chosen_interval = st.selectbox("Preview timeframe", choices)
