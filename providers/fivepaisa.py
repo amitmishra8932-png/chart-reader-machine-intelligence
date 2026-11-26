@@ -292,6 +292,10 @@ def parse_historical_candles(payload: dict) -> pd.DataFrame:
         raise RuntimeError("5paisa candle response did not contain timestamp, OHLC and volume.")
     frame = frame.iloc[:, :6].copy()
     frame.columns = ["timestamp", "open", "high", "low", "close", "volume"]
+    # Keep the exact provider-supplied timestamp text alongside the parsed
+    # value. This is essential for auditing timezone offsets and candle labels;
+    # parsing must not erase the original evidence.
+    frame.insert(1, "provider_timestamp_raw", frame["timestamp"].astype("string"))
     frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
     for col in ["open", "high", "low", "close", "volume"]:
         frame[col] = pd.to_numeric(frame[col], errors="coerce")
