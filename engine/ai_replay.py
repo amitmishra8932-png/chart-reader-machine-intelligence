@@ -12,9 +12,12 @@ import numpy as np
 import pandas as pd
 
 from engine.ai_decision import analyse_trade_setup
+from engine.historical_validation import DEFAULT_SPECIAL_SESSIONS
 
 
-def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+def _prepare(
+    frame: pd.DataFrame, timeframe: str, *, cas_eligible: bool = False,
+) -> pd.DataFrame:
     required = {"timestamp", "open", "high", "low", "close", "volume"}
     missing = required.difference(frame.columns)
     if missing:
@@ -36,6 +39,29 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     if parsed.isna().any() or parsed.dt.tz is None:
         raise ValueError("Replay timestamps must be valid and timezone-aware.")
     data["timestamp"] = parsed.dt.tz_convert("UTC")
+    local = data["timestamp"].dt.tz_convert("Asia/Kolkata")
+    # Configured special sessions are research-only in this regular-session
+    # replay. Exclude the whole date rather than mixing its irregular opening
+    # stub or shortened schedule into ordinary-session results.
+    special_dates = set(DEFAULT_SPECIAL_SESSIONS)
+    data = data.loc[~local.dt.strftime("%Y-%m-%d").isin(special_dates)].copy()
+    if data.empty:
+        raise ValueError(f"No regular-session {timeframe} candles remain after excluding configured special sessions.")
+    local = data["timestamp"].dt.tz_convert("Asia/Kolkata")
+    # CAS-eligible securities have a shorter continuous session before
+    # 2026-12-07. Exclude CAS bars, but retain and reject transition/post-close
+    # bars below. From 2026-12-07, CTS ends at 15:30 under CAS 2.0.
+    if cas_eligible:
+        minute_of_day = local.dt.hour * 60 + local.dt.minute
+        dates = local.dt.date
+        cas_start = pd.Series(
+            np.where(dates >= pd.Timestamp("2026-12-07").date(), 15 * 60 + 30, 15 * 60 + 15),
+            index=data.index,
+        )
+        cas_end = cas_start + 20
+        data = data.loc[~((minute_of_day >= cas_start) & (minute_of_day < cas_end))].copy()
+        if data.empty:
+            raise ValueError(f"No continuous-session {timeframe} candles remain after excluding CAS bars.")
     for col in ("open", "high", "low", "close", "volume"):
         data[col] = pd.to_numeric(data[col], errors="coerce")
     if not np.isfinite(data[["open", "high", "low", "close", "volume"]].to_numpy(float)).all():
@@ -61,7 +87,16 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     # Replay only continuous NSE cash-market candles; auction, transition,
     # pre-open and post-close bars are not valid intraday signal inputs.
     minute_of_day = local.dt.hour * 60 + local.dt.minute
-    last_start = 15 * 60 + (25 if timeframe == "5m" else 15)
+    dates = local.dt.date
+    continuous_close = pd.Series(
+        np.where(
+            cas_eligible & (dates < pd.Timestamp("2026-12-07").date()),
+            15 * 60 + 15,
+            15 * 60 + 30,
+        ),
+        index=data.index,
+    )
+    last_start = continuous_close - (5 if timeframe == "5m" else 15)
     in_regular_session = (minute_of_day >= 9 * 60 + 15) & (minute_of_day <= last_start)
     if not in_regular_session.all():
         raise ValueError(f"Replay contains {timeframe} bars outside regular NSE continuous trading hours.")
@@ -81,7 +116,12 @@ def _prepare(frame: pd.DataFrame, timeframe: str) -> pd.DataFrame:
                 f"Replay session {session_date} is missing its opening {timeframe} candle; "
                 "full regular-session data is required."
             )
-        expected_end_minute = 15 * 60 + (25 if timeframe == "5m" else 15)
+        session_close = (
+            15 * 60 + 15
+            if cas_eligible and pd.Timestamp(session_date).date() < pd.Timestamp("2026-12-07").date()
+            else 15 * 60 + 30
+        )
+        expected_end_minute = session_close - (5 if timeframe == "5m" else 15)
         if (last_local.hour * 60 + last_local.minute) != expected_end_minute:
             raise ValueError(
                 f"Replay session {session_date} is incomplete at the close for {timeframe}; "
@@ -126,20 +166,23 @@ def replay_ai_decisions(
     slippage_bps: float = 5.0,
     min_score: int = 7,
     min_reward_risk: float = 1.8,
+    cas_eligible: bool = False,
 ) -> dict[str, Any]:
     """Replay one symbol. Costs are round-trip bps of entry notional.
 
     Indicators may warm up on prior complete sessions, while each decision
     must use a current-session 15m bar that has fully closed by the 5m signal
     time. Trades are closed by stop, target, or the final available bar of the
-    same NSE session. If both barriers touch in one bar, stop wins.
+    same NSE session. If both barriers touch in one bar, stop wins. CAS-eligible
+    symbols use the dated NSE continuous-session close and exclude auction bars.
+    Configured special sessions are excluded from this regular-session replay.
     """
     for name, value in (("transaction_cost_bps", transaction_cost_bps),
                         ("slippage_bps", slippage_bps)):
         if not np.isfinite(value) or value < 0:
             raise ValueError(f"{name} must be finite and non-negative.")
-    five = _prepare(candles_5m, "5m")
-    fifteen = _prepare(candles_15m, "15m")
+    five = _prepare(candles_5m, "5m", cas_eligible=cas_eligible)
+    fifteen = _prepare(candles_15m, "15m", cas_eligible=cas_eligible)
     if five.empty or fifteen.empty:
         raise ValueError("Replay requires non-empty 5m and 15m candles.")
     _validate_identity(five, "5m", symbol)
