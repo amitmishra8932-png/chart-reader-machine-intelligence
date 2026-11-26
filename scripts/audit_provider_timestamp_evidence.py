@@ -199,12 +199,17 @@ def audit_frame(source: pd.DataFrame, special_dates: set[str] | None = None) -> 
         blockers.append("timestamp or OHLCV integrity defects are present")
     if counts["duplicate_keys"]:
         blockers.append("duplicate symbol/timeframe/timestamp keys are present")
+    if counts["special_session_candidate_rows"]:
+        blockers.append("special-session candidate rows require separate review")
+    if counts["outside_regular_session_candidate_rows"]:
+        blockers.append("outside-regular-session candidate rows require instrument/session classification")
     if comparison_counts.get("mismatch", 0) or comparison_counts.get("invalid_values", 0):
         blockers.append("5m-to-15m OHLCV aggregation mismatches are present")
     counts["replay_timestamp_gate"] = "pass" if not blockers else "blocked"
     counts["blockers"] = blockers
     counts["limitations"] = [
         "Explicit offsets show the timestamp's stated offset, not that the provider labels candle starts or ends correctly.",
+        "Provider candle start-versus-end labeling remains unverified until independently confirmed against provider documentation or known-time observations.",
         "Session labels are wall-clock candidates only; timezone and instrument session eligibility require independent confirmation.",
         "Incomplete 5m-to-15m groups are reported, not synthesized or repaired.",
         "This audit does not establish liquidity, execution quality, strategy profitability, or live-feed correctness.",
