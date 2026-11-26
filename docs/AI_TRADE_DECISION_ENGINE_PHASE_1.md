@@ -16,6 +16,8 @@ Provide an explainable decision-support engine that independently evaluates comp
 - Timezone-naive, misaligned, cross-session, stale, and future-dated context is rejected with NO TRADE.
 - The AI Trade Desk shows completed-bar counts per subscribed symbol so warm-up status is visible.
 - Historical candles are not silently mixed into the live buffer until 5paisa timestamp timezone and candle-boundary semantics are verified against an authenticated account.
+- Historical replay supports an explicit CAS-eligible mode: it excludes auction bars and applies the dated continuous-session close (15:15 before 2026-12-07; 15:30 from 2026-12-07). The caller must supply correct per-security CAS eligibility from the exchange security master.
+- Configured special-session dates (including the 2026-11-08 Muhurat session) are excluded from the regular-session replay; they require a separate special-session research path.
 
 ## Machine-learning overlay
 The optional RandomForest overlay trains on 3-bar forward returns grouped by symbol, timeframe and session. It uses a chronological 80/20 session holdout, training-only median imputation, and a conservative approval gate: holdout balanced accuracy must exceed the validation majority-class baseline by at least 2 percentage points. If the gate fails, the model is disabled and cannot influence recommendations.
@@ -27,6 +29,6 @@ The overlay is not automatically persisted. A new dataset must be supplied and t
 - Rule scores are confluence points, not win probabilities.
 - A signal is a candidate, not an instruction to trade; confirm next-bar price, spread, liquidity and market conditions.
 - It does not model exact brokerage, taxes, slippage, market impact or order fills.
-- Live-feed quality and 5paisa candle aggregation must be independently verified.
+- Live-feed quality and 5paisa candle aggregation must be independently verified. Uploaded RELIANCE samples show naive timestamps and are consistent with start-labelled candles when 5m bars are aggregated to 15m; timezone and provider convention still require authenticated verification.
 - No automatic order placement, broker order endpoints, or unattended trading are included.
 - Keep this branch separate from production until code review, CI, historical replay and forward paper-trading gates pass.
