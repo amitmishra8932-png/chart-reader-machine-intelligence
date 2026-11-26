@@ -56,7 +56,12 @@ def _aggregate_5m(group: pd.DataFrame) -> dict:
     }
 
 
-def audit_frame(source: pd.DataFrame, special_dates: set[str] | None = None) -> tuple[pd.DataFrame, dict]:
+def audit_frame(
+    source: pd.DataFrame,
+    special_dates: set[str] | None = None,
+    *,
+    provider_labeling_confirmed: bool = False,
+) -> tuple[pd.DataFrame, dict]:
     missing = REQUIRED.difference(source.columns)
     if missing:
         raise ValueError(f"Input is missing required columns: {sorted(missing)}")
@@ -193,6 +198,8 @@ def audit_frame(source: pd.DataFrame, special_dates: set[str] | None = None) -> 
     blockers = []
     if timezone_status != "explicit_offset_present":
         blockers.append("provider timestamps do not all carry explicit timezone offsets")
+    if not provider_labeling_confirmed:
+        blockers.append("provider candle timestamp start/end semantics have not been independently confirmed")
     if counts["raw_parsed_timestamp_mismatches"]:
         blockers.append("raw provider timestamps do not match parsed timestamps")
     if counts["invalid_timestamps"] or counts["invalid_ohlcv"] or counts["invalid_ohlc_geometry"]:
@@ -225,9 +232,16 @@ def main() -> int:
         "--special-date", action="append", default=[],
         help="Provider wall-clock date to flag for manual special-session review (YYYY-MM-DD). Repeatable.",
     )
+    parser.add_argument(
+        "--confirm-provider-candle-label-semantics", action="store_true",
+        help="Explicitly attest that provider start/end candle-label semantics were independently confirmed. Does not confirm timezone or session eligibility.",
+    )
     args = parser.parse_args()
     source = pd.read_csv(args.input_csv)
-    audited, report = audit_frame(source, set(args.special_date))
+    audited, report = audit_frame(
+        source, set(args.special_date),
+        provider_labeling_confirmed=args.confirm_provider_candle_label_semantics,
+    )
     csv_path = args.output_prefix.with_suffix(".rows.csv")
     json_path = args.output_prefix.with_suffix(".json")
     audited.to_csv(csv_path, index=False)
